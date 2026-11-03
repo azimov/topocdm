@@ -67,13 +67,22 @@ class Release:
 
 def make_release(params, concept_ids, concept_group, propensity_shape: float,
                  density: float, n_patients: int = 0, n_events: int = 0,
-                 meta: dict | None = None) -> Release:
-    """Build a Release from fitted parameters, dropping every patient term."""
+                 meta: dict | None = None, pi=None) -> Release:
+    """Build a Release from fitted parameters, dropping every patient term.
+
+    `pi` -- the group mixing weights -- is a global parameter and belongs in the
+    release. It must not be replaced by a uniform vector: if the fitted groups
+    are unbalanced, uniform mixing over-samples the rare high-intensity groups
+    and inflates the generated event rate.
+    """
     B = None if params.B is None else np.asarray(params.B, dtype=float)
-    pi = None
     if B is not None:
-        # uniform mixing: the emission does not keep per-patient group labels
-        pi = np.full(B.shape[0], 1.0 / B.shape[0])
+        if pi is None:
+            cnt = np.bincount(np.asarray(params.patient_group),
+                              minlength=B.shape[0]).astype(float)
+            pi = np.maximum(cnt, 1e-9) / max(cnt.sum(), 1.0)
+        pi = np.asarray(pi, dtype=float)
+        pi = pi / pi.sum()
     return Release(lam=np.asarray(params.lam, dtype=float),
                    concept_group=np.asarray(concept_group),
                    concept_ids=np.asarray(concept_ids),

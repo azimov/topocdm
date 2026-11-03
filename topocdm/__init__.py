@@ -36,6 +36,10 @@ from topocdm.scalable import (
 )
 from topocdm.omop import ConceptVocab, generate_omop_tables, write_omop_tables
 from topocdm.release import Release, make_release, sample_release
+from topocdm.temporal import (TemporalProfile, fit_temporal, sample_periods,
+                              generate_dated, year_exposure)
+from topocdm.cohort_incidence import (cohort_incidence, poisson_ci,
+                                      predictive_ci, monte_carlo_ci)
 from topocdm.evaluate import (
     prevalence, incidence, degree, compare, gini, predictive_loglik,
 )
@@ -56,4 +60,7 @@ __all__ = [
     "simulate_sparse", "fit_propensity_streaming",
     "ConceptVocab", "generate_omop_tables", "write_omop_tables",
     "Release", "make_release", "sample_release",
+    "TemporalProfile", "fit_temporal", "sample_periods", "generate_dated",
+    "year_exposure", "cohort_incidence", "poisson_ci", "predictive_ci",
+    "monte_carlo_ci",
 ]
