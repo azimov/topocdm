@@ -44,6 +44,21 @@ and it does not arise here.
 ## Quick start
 
 ```python
+from topocdm.scalable import simulate_sparse, fit_streaming, array_chunks
+from topocdm.release import make_release, sample_release
+from topocdm.omop import ConceptVocab, generate_omop_tables
+
+data, truth = simulate_sparse(n=200_000, c=1000)
+fit = fit_streaming(array_chunks(data, chunk_size=5000, sample_frac=0.25),
+                    n=data.n, c=data.c, concept_group=data.concept_group,
+                    n_groups=5)
+release = make_release(fit.params, data.concept_ids, data.concept_group,
+                       propensity_shape=k, density=data.density)
+synth = sample_release(release, n_patients=10_000, density=8.0)   # density is a knob
+tables = generate_omop_tables(synth.X.toarray(), synth.T, vocab)
+```
+
+```python
 import topocdm as t
 
 data, truth = t.simulate(t.SimConfig(n=4000, c=60, seed=0))   # or load a real CDM
@@ -53,6 +68,27 @@ print(t.aic_mixture(fit.params, data), t.bic_mixture(fit.params, data))
 synth = t.sample_cdm(fit.params, data, mode="fresh")
 print(t.compare(data, synth)["prevalence"])
 ```
+
+## Scaling to a real CDM
+
+The model is separable across patients once the global parameters are fixed, so
+the fit streams: it needs only events per concept, events per patient per
+*concept group*, and a propensity-weighted group mass. No patient x concept
+matrix is ever built.
+
+```
+experiments/03_scale.py, 200,000 patients x 1,000 concepts, 8.0M events
+  dense matrix would be 1.60 GB
+  full data     7.8 s
+  25% sample    5.1 s   lambda within L1 0.014 of the full fit
+   5% sample   10.7 s   lambda within L1 0.037
+  peak RSS      0.65 GB  (dense matrix alone would be 1.60 GB)
+```
+
+Subsampling patients is a strategy, not a compromise. The released artefact
+contains no per-patient parameters (see `docs/PRIVACY.md`), so a patient sample
+estimates exactly the quantities that are released and none of the ones that
+are not.
 
 ## What is validated, and what is not
 
@@ -93,12 +129,16 @@ recorded here because it is an easy trap.
 topocdm/          the library
   model.py        mean structure, likelihoods, AIC/BIC
   fit.py          EM / IPF, identifiability constraints, propensity fitting
+  scalable.py     streaming/chunked fit, sparse CDM, large simulators
+  release.py      the shareable artefact (no per-patient parameters)
+  omop.py         write a cohort into OMOP domain tables
   generate.py     fixed-density sampling (replay and fresh modes)
   simulate.py     ground-truth CDMs with known topology
   evaluate.py     prevalence, incidence, co-occurrence, held-out prediction
 experiments/      01 recovery, 02 validation
 tests/            pytest suite
 docs/DESIGN.md    the likelihood argument in full
+docs/PRIVACY.md   what a Release contains, and the residual disclosure risk
 explore/          earlier exploratory work (CiGRAM probes, bias demos)
 figs/, results/   generated output
 ```

@@ -1,0 +1,73 @@
+{
+ "scale": [
+  {
+   "frac": 1.0,
+   "seconds": 7.782119989395142,
+   "epochs": 6,
+   "lam_l1_vs_full": 0.0,
+   "patients_seen": 200000
+  },
+  {
+   "frac": 0.5,
+   "seconds": 12.35550594329834,
+   "epochs": 6,
+   "lam_l1_vs_full": 0.008858543107704963,
+   "patients_seen": 100000
+  },
+  {
+   "frac": 0.25,
+   "seconds": 5.0586371421813965,
+   "epochs": 6,
+   "lam_l1_vs_full": 0.014032769262410288,
+   "patients_seen": 50000
+  },
+  {
+   "frac": 0.1,
+   "seconds": 9.768563032150269,
+   "epochs": 6,
+   "lam_l1_vs_full": 0.025311671230673797,
+   "patients_seen": 20000
+  },
+  {
+   "frac": 0.05,
+   "seconds": 10.700583934783936,
+   "epochs": 6,
+   "lam_l1_vs_full": 0.03656699448787265,
+   "patients_seen": 10000
+  }
+ ],
+ "peak_rss_gb": 0.646873088,
+ "release": {
+  "n_concepts": 1000,
+  "n_concept_groups": 10,
+  "n_patient_groups": 5,
+  "n_parameters": 2056,
+  "density": 8.001273,
+  "propensity_shape": 0.7821733545121566,
+  "contains_patient_level_parameters": false
+ },
+ "density": [
+  {
+   "target": 2.0,
+   "realised": 2.0,
+   "events": 50000
+  },
+  {
+   "target": 8.0,
+   "realised": 8.0,
+   "events": 200000
+  },
+  {
+   "target": 20.0,
+   "realised": 20.0,
+   "events": 500000
+  }
+ ],
+ "data": {
+  "n": 200000,
+  "c": 1000,
+  "events": 8001273,
+  "nnz": 6640013,
+  "dense_gb": 1.6
+ }
+}

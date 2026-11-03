@@ -189,3 +189,55 @@ simulated but not scored will always look adequate.
   modelled as a rate, not as a trajectory.
 - **No covariates.** Age, sex and care site are not yet in the model; they would
   enter as offsets or as block structure.
+
+## 9. Scaling: why the fit streams
+
+The model separates across patients once `lambda`, `B` and `pi` are fixed.
+`u_i` is local; the global parameters depend on the data only through
+
+```
+colsum_j = sum_i X_ij            events per concept
+n_ih     = sum_{j in h} X_ij     events per patient per concept group
+A_g      = sum_i R_ig T_i u_i    propensity-weighted group mass
+```
+
+Note what is *not* in that list: nothing indexed by both a patient and a
+concept. The E-step and the `u` update need only `n_ih`, a vector of length H
+(the number of concept groups, typically tens), not the patient's full row.
+
+So the fit is one chunk of patients at a time, in memory
+`O(chunk * (H + G) + C)`, and a 200,000 x 1,000 CDM with 8M events fits in
+seconds (experiments/03_scale.py). The dense matrix would be 1.6 GB before any
+arithmetic.
+
+Three consequences worth stating:
+
+- **Subsampling patients is exact for the release.** The released artefact
+  (`docs/PRIVACY.md`) contains `lambda`, `B`, `pi` and a propensity shape — no
+  `u_i`. A random patient sample estimates exactly those quantities. It is not
+  an approximation to the thing being published; it is the thing being
+  published, estimated on a sample.
+- **A fresh sample each epoch is legitimate.** Because the global sufficient
+  statistics are sums over patients, redrawing the sample between epochs keeps
+  the estimate unbiased and bounds the working set. 25% of patients reproduces
+  the full-data `lambda` to L1 0.014.
+- **Warm start, then stream.** The block structure is latent, so a cold start
+  has a symmetry problem: with `B` uniform every group scores identically and
+  the responsibilities never split. The fit therefore runs the exact EM on a
+  bounded sample first (a few thousand patients), and uses that as the starting
+  point for the stream. This also means initialisation and refinement share one
+  code path.
+
+## 10. Density is a generator parameter, not a fit output
+
+Fitting estimates the observed density (events per person-year). Generation
+takes a density and allocates `M = density * sum(T)` events multinomially, which
+is what fixed density means. The same release therefore produces a sparse or a
+dense cohort without refitting: requested 2, 8 and 20 events/person-year are
+realised exactly.
+
+The connection back to CiGRAM is exact here. The thesis fixed the number of
+edges and sampled them without replacement — a model that could not be scored.
+Conditioning a Poisson model on the same total keeps the fixed-density
+structure, makes the likelihood closed form, and (because a CDM is a
+multigraph) removes the without-replacement constraint that caused the problem.

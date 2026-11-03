@@ -30,6 +30,12 @@ from topocdm.model import (
 from topocdm.fit import fit, fit_ipf, fit_propensity, PropensityDist, FitResult
 from topocdm.generate import sample_cdm, sample_replicates
 from topocdm.simulate import simulate, simulate_null, SimConfig
+from topocdm.scalable import (
+    SparseCDM, to_sparse, fit_streaming, array_chunks, StreamingFit,
+    simulate_sparse, fit_propensity_streaming,
+)
+from topocdm.omop import ConceptVocab, generate_omop_tables, write_omop_tables
+from topocdm.release import Release, make_release, sample_release
 from topocdm.evaluate import (
     prevalence, incidence, degree, compare, gini, predictive_loglik,
 )
@@ -46,4 +52,8 @@ __all__ = [
     "simulate", "simulate_null", "SimConfig",
     "prevalence", "incidence", "degree", "compare", "gini",
     "predictive_loglik",
+    "SparseCDM", "to_sparse", "fit_streaming", "array_chunks", "StreamingFit",
+    "simulate_sparse", "fit_propensity_streaming",
+    "ConceptVocab", "generate_omop_tables", "write_omop_tables",
+    "Release", "make_release", "sample_release",
 ]

@@ -116,3 +116,59 @@ def test_null_simulation_has_no_blocks():
     data, true = t.simulate_null(t.SimConfig(n=500, c=20, n_concept_groups=4,
                                              n_patient_groups=4, seed=17))
     assert np.allclose(true.B, true.B[0, 0], rtol=1e-6)
+
+
+# ---------------------------------------------------------------- scalability
+
+def test_streaming_matches_in_memory():
+    """The chunked fit must reach the same optimum as the in-memory fit."""
+    from topocdm.scalable import to_sparse, fit_streaming, array_chunks
+    data, _ = t.simulate(t.SimConfig(n=800, c=24, n_concept_groups=4,
+                                     n_patient_groups=3, block_amplification=4.0,
+                                     block_noise=0.05, seed=31))
+    ref = t.fit(data, n_patient_groups=3, n_restarts=2)
+    sp = to_sparse(data)
+    st = fit_streaming(array_chunks(sp, chunk_size=200), n=sp.n, c=sp.c,
+                       concept_group=sp.concept_group, n_groups=3, n_epochs=20)
+    # same likelihood to within the streaming tolerance
+    assert abs(st.loglik - ref.loglik) / abs(ref.loglik) < 0.02
+    a = st.params.lam / st.params.lam.sum()
+    b = ref.params.lam / ref.params.lam.sum()
+    assert np.abs(a - b).sum() < 0.10
+
+
+def test_subsampling_is_stable():
+    """A patient subsample must give nearly the same lambda as the full data."""
+    from topocdm.scalable import simulate_sparse, fit_streaming, array_chunks
+    d, _ = simulate_sparse(n=4000, c=60, seed=7)
+    full = fit_streaming(array_chunks(d, chunk_size=1000), n=d.n, c=d.c,
+                         concept_group=d.concept_group, n_groups=3, n_epochs=4,
+                         init_sample=2000)
+    sub = fit_streaming(array_chunks(d, chunk_size=1000, sample_frac=0.4),
+                        n=d.n, c=d.c, concept_group=d.concept_group,
+                        n_groups=3, n_epochs=4, init_sample=2000)
+    a = full.params.lam / full.params.lam.sum()
+    b = sub.params.lam / sub.params.lam.sum()
+    assert np.abs(a - b).sum() < 0.10
+
+
+def test_omop_tables_are_consistent():
+    """Every event must carry a valid person, visit and concept id."""
+    from topocdm.omop import ConceptVocab, generate_omop_tables
+    from topocdm.scalable import simulate_sparse
+    d, _ = simulate_sparse(n=120, c=10, seed=3)
+    domains = ["Condition", "Drug", "Measurement", "Procedure", "Observation"]
+    vocab = ConceptVocab(concept_id=np.arange(1, d.c + 1),
+                         domain_id=np.array([domains[i % 5] for i in range(d.c)]))
+    tables = generate_omop_tables(d.X.toarray(), d.T, vocab, rng=np.random.default_rng(0))
+
+    persons = set(tables["person"]["person_id"])
+    visits = set(tables["visit_occurrence"]["visit_occurrence_id"])
+    total = 0
+    for name, df in tables.items():
+        if name in {"person", "observation_period", "visit_occurrence"}:
+            continue
+        total += len(df)
+        assert set(df["person_id"]).issubset(persons)
+        assert set(df["visit_occurrence_id"]).issubset(visits)
+    assert total == d.total, "every event should produce exactly one row"
