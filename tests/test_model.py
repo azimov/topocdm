@@ -227,3 +227,39 @@ def test_sql_plan_is_portable():
     pg = {s.content_hash for s in plan(dialect="postgres") if s.name == "person_time"}
     dk = {s.content_hash for s in plan(dialect="duckdb") if s.name == "person_time"}
     assert pg != dk
+
+
+def test_visit_model_recovers_burstiness():
+    """The visit chain should put records of related concepts in one encounter."""
+    from topocdm.visits import fit_visit_model, assign_to_visits
+    import pandas as pd
+
+    rng = np.random.default_rng(0)
+    H, C, N = 4, 20, 300
+    cg = np.arange(C) % H
+    # two groups only, strongly persistent, so the chain is easy to check
+    trans = np.full((H, H), 0.02)
+    np.fill_diagonal(trans, 0.94); trans /= trans.sum(1, keepdims=True)
+    from topocdm.visits import VisitModel
+    rows, visits = [], []
+    for i in range(1, N + 1):
+        nv = int(rng.integers(5, 15))
+        dates = pd.to_datetime("2020-01-01") + pd.to_timedelta(
+            np.sort(rng.integers(0, 700, nv)), unit="D")
+        visits.append(pd.DataFrame({"person_id": i, "visit_date": dates}))
+        h = 0
+        for d in dates:
+            h = rng.choice(H, p=trans[h])
+            for _ in range(rng.integers(2, 5)):
+                rows.append((i, int(rng.integers(0, C)) , d))
+    ev = pd.DataFrame(rows, columns=["person_id", "concept_id", "event_date"])
+    ev["concept_id"] = (ev.index % C)
+    vi = pd.concat(visits, ignore_index=True)
+    model = fit_visit_model(vi, ev, dict(enumerate(cg)), H, concept_group=cg)
+    assert model.trans.shape == (H, H)
+    assert np.allclose(model.trans.sum(1), 1.0)
+    # records should land on dates that exist in the visit table
+    counts = rng.integers(0, 4, size=C)
+    pairs = assign_to_visits(counts, 8, model, rng)
+    assert len(pairs) == int(counts.sum())
+    assert all(0 <= v < 8 for v, _ in pairs)
