@@ -83,7 +83,8 @@ def make_release(params, concept_ids, concept_group, propensity_shape: float,
 
 
 def sample_release(release: Release, n_patients: int, years: float = 5.0,
-                   density: float | None = None, rng=None) -> SparseCDM:
+                   density: float | None = None, rng=None,
+                   person_time: np.ndarray | None = None) -> SparseCDM:
     """Draw a synthetic cohort at a chosen density.
 
     Events are allocated multinomially to a *fixed total* M = density * sum(T),
@@ -92,7 +93,11 @@ def sample_release(release: Release, n_patients: int, years: float = 5.0,
     """
     rng = rng or np.random.default_rng(0)
     c = release.n_concepts
-    T = np.full(n_patients, float(years))
+    if person_time is not None:
+        T = np.asarray(person_time, dtype=float).copy()
+        n_patients = T.size
+    else:
+        T = np.full(n_patients, float(years))
     target = (release.density if density is None else float(density)) * T.sum()
 
     k = max(release.propensity_shape, 1e-6)

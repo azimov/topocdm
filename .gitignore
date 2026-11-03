@@ -18,3 +18,10 @@ src/cigram/
 
 # os
 .DS_Store
+
+# credentials and local connection details
+.secrets/
+
+# compiled kernel (build with scripts/build_fast.sh)
+topocdm/_fast.so
+# extracted CDM data

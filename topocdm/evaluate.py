@@ -84,8 +84,13 @@ def compare(real: CDMIncidence, synth: CDMIncidence) -> dict:
     m = max(int(degree(real).max()), int(degree(synth).max()))
     dh, dhs = degree_hist(real, m), degree_hist(synth, m)
 
-    # co-occurrence on the most prevalent concepts, where it is estimable
-    top = np.argsort(-pv)[: min(25, len(pv))]
+    # co-occurrence is only informative on concepts with intermediate
+    # prevalence: pairs that are near-universal are ~1 by construction and
+    # swamp the correlation.
+    mid = np.where((pv > 0.05) & (pv < 0.6))[0]
+    if mid.size < 5:
+        mid = np.argsort(-pv)[: min(25, len(pv))]
+    top = mid[: min(25, mid.size)]
 
     return dict(
         prevalence=_calib(pv, pvs),

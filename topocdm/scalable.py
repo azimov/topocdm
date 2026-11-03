@@ -33,6 +33,13 @@ from scipy.special import gammaln, logsumexp
 
 from topocdm.model import Params
 
+try:                                    # optional compiled kernel
+    from topocdm import fast as _FAST
+    if not _FAST.AVAILABLE:
+        _FAST = None
+except Exception:                       # pragma: no cover
+    _FAST = None
+
 EPS = 1e-12
 
 
@@ -231,6 +238,11 @@ def _chunk_loglik(X, T, u, lam, B, pi, n_ih, rowsum, cg_idx, H, G,
     any reported fit statistic should be computed by `loglik_mixture` on a
     held-out or sampled set.
     """
+    if _FAST is not None:
+        v = _FAST.chunk_loglik(X, T, u, lam, B, pi, cg_idx, G)
+        if v is not None:
+            return v
+
     n = X.shape[0]
     if n <= rows:
         return _dense_chunk_loglik(X, T, u, lam, B, pi, cg_idx, G)
@@ -264,6 +276,7 @@ def fit_streaming(make_chunks: Callable[[int], Iterator], n, c, concept_group,
     else:
         lam = np.full(c, 1.0 / c)
         pi = np.full(G, 1.0 / G)
+        B = None
         if G > 1:
             warm = _init_from_sample_fit(make_chunks, c, cg_idx, G,
                                          init_sample, seed)

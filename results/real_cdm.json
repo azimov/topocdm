@@ -1,0 +1,84 @@
+{
+ "selection": [
+  {
+   "G": 1,
+   "heldout": -1.0001680258925594
+  },
+  {
+   "G": 4,
+   "heldout": -0.7430671455705458
+  },
+  {
+   "G": 8,
+   "heldout": -0.7304490863142346
+  },
+  {
+   "G": 15,
+   "heldout": -0.7193517536244676
+  },
+  {
+   "G": 25,
+   "heldout": -0.7115382581316606
+  }
+ ],
+ "G_hat": 25,
+ "release": {
+  "n_concepts": 773,
+  "n_concept_groups": 18,
+  "n_patient_groups": 25,
+  "n_parameters": 2022,
+  "density": 17.080863788733552,
+  "propensity_shape": 2.214841819814561,
+  "contains_patient_level_parameters": false
+ },
+ "results": {
+  "topology": {
+   "prevalence": {
+    "r": 0.8598464724700853,
+    "slope": 0.8817775696190492,
+    "intercept": -0.013985460073302902,
+    "med_ratio": 0.75
+   },
+   "incidence": {
+    "r": 0.9475485775131013,
+    "slope": 0.8409238013784246,
+    "intercept": 0.0035031475545847196,
+    "med_ratio": 1.0
+   },
+   "degree_mean": [
+    74.6028,
+    96.8652
+   ],
+   "degree_l1": 0.8896000000000001,
+   "cooccurrence_r": 0.2376637602090433,
+   "heldout": -0.70815997317172
+  },
+  "marginals": {
+   "prevalence": {
+    "r": 0.848118107326723,
+    "slope": 0.7021670906224982,
+    "intercept": -0.009938520244544662,
+    "med_ratio": 0.875
+   },
+   "incidence": {
+    "r": 0.999420495849195,
+    "slope": 0.9999217934170689,
+    "intercept": -6.809873207319422e-05,
+    "med_ratio": 1.0
+   },
+   "degree_mean": [
+    74.6028,
+    117.1876
+   ],
+   "degree_l1": 1.0728,
+   "cooccurrence_r": 0.18328454809285397,
+   "heldout": -0.7867726337010764
+  }
+ },
+ "data": {
+  "n": 10000,
+  "c": 773,
+  "events": 4925516,
+  "density": 17.066634367670257
+ }
+}
