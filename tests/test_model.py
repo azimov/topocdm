@@ -172,3 +172,58 @@ def test_omop_tables_are_consistent():
         assert set(df["person_id"]).issubset(persons)
         assert set(df["visit_occurrence_id"]).issubset(visits)
     assert total == d.total, "every event should produce exactly one row"
+
+
+# ---------------------------------------------------------------- scale-out
+
+def test_partitioned_fit_matches_sequential():
+    """The map/reduce driver must reproduce the sequential fit exactly."""
+    from topocdm.scalable import simulate_sparse, fit_streaming
+    from topocdm.distributed import fit_partitioned, partition_stats, merge, Stats
+    from topocdm.model import Params
+
+    d, _ = simulate_sparse(n=3000, c=80, n_concept_groups=6,
+                           n_patient_groups=4, seed=9)
+    G, CH = 4, 750
+    H = int(d.concept_group.max()) + 1
+
+    def make_chunks(epoch):
+        for s in range(0, d.n, CH):
+            idx = np.arange(s, min(s + CH, d.n))
+            yield idx, d.X[s:s + CH], d.T[s:s + CH]
+
+    init = Params(u=np.ones(d.n), lam=np.full(d.c, 1.0 / d.c),
+                  B=np.ones((G, H)), patient_group=np.zeros(d.n, int),
+                  concept_group=d.concept_group, n_groups=G)
+
+    seq = fit_streaming(make_chunks, n=d.n, c=d.c,
+                        concept_group=d.concept_group, n_groups=G,
+                        n_epochs=4, init=init, keep_u=False)
+    parts = [(d.X[s:s + CH], d.T[s:s + CH]) for s in range(0, d.n, CH)]
+    par, hist = fit_partitioned(parts, d.c, d.concept_group, G,
+                                n_epochs=4, init=init)
+
+    assert abs(seq.loglik - hist[-1]) < 1e-6
+    assert np.allclose(seq.params.lam, par.lam, rtol=0, atol=1e-12)
+    assert np.allclose(seq.params.B, par.B, rtol=0, atol=1e-12)
+
+
+def test_sql_plan_is_portable():
+    """Every dialect must produce a plan, and content hashes must be stable."""
+    from topocdm.sql import plan, days_between
+    for dialect in ["postgres", "databricks", "bigquery", "snowflake", "duckdb"]:
+        steps = plan(dialect=dialect)
+        assert len(steps) == 8
+        assert all(s.content_hash for s in steps)
+        assert days_between(dialect, "a", "b")
+    # domain aggregations are dialect-independent, so they hash the same
+    # anywhere -- that is what makes a checkpoint reusable across platforms
+    for name in ["ev_condition", "ev_drug", "ev_measurement"]:
+        h = {s.content_hash for s in plan(dialect="postgres") if s.name == name}
+        h |= {s.content_hash for s in plan(dialect="duckdb") if s.name == name}
+        assert len(h) == 1
+    # person-time legitimately differs: date arithmetic is the one dialect
+    # specific piece
+    pg = {s.content_hash for s in plan(dialect="postgres") if s.name == "person_time"}
+    dk = {s.content_hash for s in plan(dialect="duckdb") if s.name == "person_time"}
+    assert pg != dk

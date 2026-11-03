@@ -36,6 +36,9 @@ from topocdm.scalable import (
 )
 from topocdm.omop import ConceptVocab, generate_omop_tables, write_omop_tables
 from topocdm.release import Release, make_release, sample_release
+from topocdm.sql import plan as sql_plan, CheckpointExecutor, Step
+from topocdm.distributed import (partition_stats, merge as merge_stats,
+                                 m_step, fit_partitioned, Stats)
 from topocdm.temporal import (TemporalProfile, fit_temporal, sample_periods,
                               generate_dated, year_exposure)
 from topocdm.cohort_incidence import (cohort_incidence, poisson_ci,
@@ -60,6 +63,8 @@ __all__ = [
     "simulate_sparse", "fit_propensity_streaming",
     "ConceptVocab", "generate_omop_tables", "write_omop_tables",
     "Release", "make_release", "sample_release",
+    "sql_plan", "CheckpointExecutor", "Step",
+    "partition_stats", "merge_stats", "m_step", "fit_partitioned", "Stats",
     "TemporalProfile", "fit_temporal", "sample_periods", "generate_dated",
     "year_exposure", "cohort_incidence", "poisson_ci", "predictive_ci",
     "monte_carlo_ci",

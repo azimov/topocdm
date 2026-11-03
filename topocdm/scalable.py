@@ -256,7 +256,8 @@ def fit_streaming(make_chunks: Callable[[int], Iterator], n, c, concept_group,
                   n_groups: int = 1, n_epochs: int = 25, local_iters: int = 3,
                   tol: float = 1e-7, init: Params | None = None,
                   init_sample: int = 5000, seed: int = 0,
-                  ll_rows: int = 512, verbose: bool = False) -> StreamingFit:
+                  ll_rows: int = 512, keep_u: bool = True,
+                  verbose: bool = False) -> StreamingFit:
     """Fit by epoch-wise EM over a stream of patient chunks.
 
     `make_chunks(epoch)` returns an iterable of (X_chunk, T_chunk) with X_chunk
@@ -287,8 +288,12 @@ def fit_streaming(make_chunks: Callable[[int], Iterator], n, c, concept_group,
                 B = _init_B(make_chunks, col_H, G, H, lam, cg_idx, n,
                             init_sample, seed)
 
-    u_all = np.ones(n)
-    lab_all = np.zeros(n, dtype=int)
+    # u_i is per-patient nuisance. It is needed only to populate the returned
+    # Params object; the fit itself uses it per chunk and discards it. At
+    # 10^8+ patients the array is gigabytes, so allow it to be dropped.
+    if keep_u:
+        u_all = np.ones(n)
+        lab_all = np.zeros(n, dtype=int)
 
     ll_rng = np.random.default_rng(seed + 999)
     history = []
@@ -329,9 +334,10 @@ def fit_streaming(make_chunks: Callable[[int], Iterator], n, c, concept_group,
                     R /= R.sum(axis=1, keepdims=True)
                     u = rowsum / np.maximum(T * (R @ blam), EPS)
 
-            u_all[idx] = u
-            if R.shape[1] > 1:
-                lab_all[idx] = np.argmax(R, axis=1)
+            if keep_u:
+                u_all[idx] = u
+                if R.shape[1] > 1:
+                    lab_all[idx] = np.argmax(R, axis=1)
 
             colsum += np.asarray(X.sum(axis=0)).ravel()
             num_gh += R.T @ n_ih
@@ -366,8 +372,9 @@ def fit_streaming(make_chunks: Callable[[int], Iterator], n, c, concept_group,
             break
         prev = ll
 
-    params = Params(u=u_all, lam=lam, B=B,
-                    patient_group=lab_all,
+    params = Params(u=(u_all if keep_u else np.ones(n)),
+                    lam=lam, B=B,
+                    patient_group=(lab_all if keep_u else np.zeros(n, dtype=int)),
                     concept_group=cg_idx.copy(), n_groups=G)
     return StreamingFit(params=params,
                         loglik=float(history[-1]) if history else -np.inf,
