@@ -1,0 +1,25 @@
+[build-system]
+requires = ["setuptools>=68", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "topocdm"
+version = "0.1.0"
+description = "A fixed-density generative topology model of an OMOP CDM, with a likelihood"
+readme = "README.md"
+requires-python = ">=3.10"
+license = { text = "MIT" }
+authors = [{ name = "Jamie Gilbert" }]
+dependencies = [
+    "numpy>=1.24",
+    "scipy>=1.10",
+]
+
+[project.optional-dependencies]
+dev = ["pytest>=7", "matplotlib>=3.7"]
+
+[tool.setuptools]
+packages = ["topocdm"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]

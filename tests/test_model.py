@@ -1,0 +1,118 @@
+"""Tests for the fixed-density topology model.
+
+The important ones are `test_ipf_matches_optimiser` (the closed-form updates
+really do reach the MLE) and `test_block_recovery` (the latent structure is
+identified, not just fitted).
+"""
+
+import numpy as np
+import pytest
+from scipy import optimize
+
+import topocdm as t
+from topocdm.fit import fit_propensity_nb
+
+
+@pytest.fixture(scope="module")
+def small():
+    return t.simulate(t.SimConfig(n=400, c=12, n_concept_groups=3,
+                                  n_patient_groups=2, block_amplification=2.0,
+                                  block_noise=0.05, seed=7))
+
+
+def test_conditional_loglik_definition():
+    data, true = t.simulate(t.SimConfig(n=60, c=8, seed=1))
+    mu = t.mean_matrix(true, data)
+    p = mu / mu.sum()
+    expected = float(np.sum(data.X * np.log(p)))
+    assert np.isclose(t.loglik_conditional(true, data), expected, rtol=1e-10)
+
+
+def test_identifiability_constraints(small):
+    data, _ = small
+    r = t.fit(data, n_patient_groups=2, n_restarts=1)
+    p = r.params
+    assert np.isclose(p.u.mean(), 1.0)
+    w = np.bincount(p.patient_group, weights=data.T * p.u,
+                    minlength=p.n_groups)
+    for h in range(p.B.shape[1]):
+        assert np.isclose(np.sum(w * p.B[:, h]) / w.sum(), 1.0, atol=1e-8)
+
+
+def test_ipf_matches_optimiser():
+    """IPF must reach the same optimum as a general-purpose optimiser."""
+    data, _ = t.simulate(t.SimConfig(n=120, c=8, block_amplification=0.0,
+                                     block_noise=1e-9, seed=3))
+    r = t.fit(data, n_patient_groups=1)
+
+    n, c = data.n, data.c
+
+    def nll(theta):
+        theta = np.clip(theta, -40.0, 40.0)     # keep exp() finite
+        u = np.exp(theta[:n])
+        lam = np.exp(theta[n:])
+        mu = np.maximum(data.T[:, None] * u[:, None] * lam[None, :], 1e-12)
+        return -float(np.sum(data.X * np.log(mu) - mu))
+
+    x0 = np.concatenate([np.log(r.params.u), np.log(r.params.lam)])
+    res = optimize.minimize(nll, x0, method="L-BFGS-B",
+                            options=dict(maxiter=20000, ftol=1e-15))
+    # `nll` is the Poisson kernel (without the -log X! term); compare on the
+    # same scale, and also check both agree with the packaged log-likelihood.
+    from scipy.special import gammaln
+    kernel = t.loglik_poisson(r.params, data) + float(gammaln(data.X + 1).sum())
+    assert np.isclose(-res.fun, kernel, rtol=1e-6)
+
+
+def test_loglik_increases_monotonically(small):
+    data, _ = small
+    r = t.fit(data, n_patient_groups=2, n_restarts=1)
+    hist = np.array(r.history)
+    # a classification-EM reassignment can cost a negligible amount; a large
+    # decrease would be a bug
+    assert np.all(np.diff(hist) > -1e-3), "log-likelihood decreased"
+    assert np.isclose(r.loglik, hist.max())
+
+
+def test_generation_preserves_total():
+    data, true = t.simulate(t.SimConfig(n=300, c=10, seed=5))
+    syn = t.sample_cdm(true, data, mode="replay", rng=np.random.default_rng(0))
+    assert syn.total == data.total
+    assert syn.X.shape == data.X.shape
+    assert np.all(syn.X >= 0)
+
+
+def test_block_recovery():
+    """With a clear planted structure the groups must be recovered."""
+    from scipy.optimize import linear_sum_assignment
+    data, true = t.simulate(t.SimConfig(n=2500, c=40, n_concept_groups=4,
+                                        n_patient_groups=4,
+                                        block_noise=1e-9,
+                                        block_amplification=5.0, seed=11))
+    r = t.fit(data, n_patient_groups=4, n_restarts=2)
+    C = np.array([[((r.params.patient_group == g) &
+                    (true.patient_group == k)).sum() for k in range(4)]
+                  for g in range(4)])
+    ri, ci = linear_sum_assignment(-C)
+    assert C[ri, ci].sum() / C.sum() > 0.8
+
+
+def test_fresh_generation_matches_topology():
+    data, _ = t.simulate(t.SimConfig(n=1500, c=30, n_concept_groups=4,
+                                     n_patient_groups=4, seed=13))
+    r = t.fit(data, n_patient_groups=4, n_restarts=2)
+    dist = fit_propensity_nb(data, r.params)
+    syn = t.sample_cdm(r.params, data, patient_dist=dist, mode="fresh",
+                       rng=np.random.default_rng(1))
+    cmp = t.compare(data, syn)
+    assert cmp["prevalence"]["r"] > 0.95
+    assert cmp["incidence"]["r"] > 0.95
+    assert cmp["cooccurrence_r"] > 0.9
+    # degree distribution should be in the right place, not just right shape
+    assert abs(cmp["degree_mean"][0] - cmp["degree_mean"][1]) < 1.5
+
+
+def test_null_simulation_has_no_blocks():
+    data, true = t.simulate_null(t.SimConfig(n=500, c=20, n_concept_groups=4,
+                                             n_patient_groups=4, seed=17))
+    assert np.allclose(true.B, true.B[0, 0], rtol=1e-6)
