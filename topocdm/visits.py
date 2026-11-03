@@ -121,3 +121,114 @@ def assign_to_visits(counts: np.ndarray, n_visits: int, model: VisitModel,
         pick = rng.choice(slots, size=int(counts[j]), replace=True)
         out.extend((int(v), int(j)) for v in pick)
     return out
+
+
+# --------------------------------------------------------------------------
+# Fixing the ordering: per-group presence chains instead of a group sequence
+# --------------------------------------------------------------------------
+#
+# The first version sampled a single group per visit and then assigned concepts
+# to matching visits. A visit could still receive several groups, so the
+# realised modal group drifted from the sampled one and the reproduced
+# transition structure was diluted (r = 0.47).
+#
+# This version models each concept group's *presence* at a visit as its own
+# two-state Markov chain:
+#
+#     p_stay[h]   = P(h present at v | h present at v-1)
+#     p_enter[h]  = P(h present at v | h absent at v-1)
+#
+# Both are estimated by counting from consecutive visits -- 2H numbers, cheaper
+# than the H x H matrix -- and the generated presence is then exactly the thing
+# that gets assigned to, so nothing drifts.
+
+
+@dataclass
+class PresenceModel:
+    p_stay: np.ndarray        # (H,)
+    p_enter: np.ndarray       # (H,)
+    base: np.ndarray          # (H,) marginal presence probability
+    concept_group: np.ndarray = None
+    mean_visits: float = 1.0
+
+
+def fit_presence_model(events: pd.DataFrame, concept_group_of: dict,
+                       n_groups: int, concept_group: np.ndarray,
+                       visits: pd.DataFrame | None = None) -> PresenceModel:
+    """Estimate per-group persistence from consecutive visits."""
+    ev = events.copy()
+    ev["grp"] = ev["concept_id"].map(concept_group_of)
+    ev = ev.dropna(subset=["grp"])
+    ev["grp"] = ev["grp"].astype(int)
+
+    pv = (ev.groupby(["person_id", "event_date", "grp"]).size()
+            .rename("n").reset_index())
+    pv = pv.sort_values(["person_id", "event_date"])
+    # presence matrix per (patient, visit index)
+    pv["visit_rank"] = pv.groupby("person_id")["event_date"].rank("dense").astype(int)
+    pres = {}
+    for (pid, vr), g in pv.groupby(["person_id", "visit_rank"]):
+        pres[(pid, vr)] = set(g["grp"].tolist())
+
+    stay = np.zeros(n_groups); stay_tot = np.zeros(n_groups)
+    enter = np.zeros(n_groups); enter_tot = np.zeros(n_groups)
+    for (pid, vr), s in pres.items():
+        prev = pres.get((pid, vr - 1))
+        if prev is None:
+            continue
+        for h in range(n_groups):
+            if h in prev:
+                stay_tot[h] += 1
+                stay[h] += 1.0 if h in s else 0.0
+            else:
+                enter_tot[h] += 1
+                enter[h] += 1.0 if h in s else 0.0
+
+    p_stay = np.where(stay_tot > 0, stay / np.maximum(stay_tot, 1), 0.3)
+    p_enter = np.where(enter_tot > 0, enter / np.maximum(enter_tot, 1), 0.05)
+    base = np.array([np.mean([h in s for s in pres.values()]) for h in range(n_groups)])
+    n_vis = len({k[1] for k in pres}) and np.mean(
+        [max(vr for (p, vr) in pres if p == pid)
+         for pid in {k[0] for k in pres}])
+    return PresenceModel(p_stay=p_stay, p_enter=p_enter, base=base,
+                         concept_group=concept_group,
+                         mean_visits=float(n_vis))
+
+
+def sample_presence(n_visits: int, model: PresenceModel, rng) -> np.ndarray:
+    """(n_visits, H) boolean presence matrix from the two-state chains."""
+    H = len(model.base)
+    out = np.zeros((n_visits, H), dtype=bool)
+    if n_visits == 0:
+        return out
+    out[0] = rng.random(H) < model.base
+    for v in range(1, n_visits):
+        p = np.where(out[v - 1], model.p_stay, model.p_enter)
+        out[v] = rng.random(H) < p
+    return out
+
+
+def assign_with_presence(counts: np.ndarray, presence: np.ndarray,
+                         model: PresenceModel, rng,
+                         month_weight: np.ndarray | None = None) -> list:
+    """Assign records to visits using the sampled presence matrix.
+
+    `month_weight` is an optional (n_visits,) vector used to bias placement
+    towards visits in months where the group's seasonal multiplier is high.
+    """
+    n_visits, H = presence.shape
+    if n_visits == 0:
+        return []
+    out = []
+    for j in np.nonzero(counts > 0)[0]:
+        h = int(model.concept_group[j])
+        slots = np.nonzero(presence[:, h])[0]
+        if slots.size == 0:
+            slots = np.arange(n_visits)
+        w = None
+        if month_weight is not None:
+            w = np.asarray(month_weight[slots], dtype=float)
+            w = w / w.sum() if w.sum() > 0 else None
+        pick = rng.choice(slots, size=int(counts[j]), replace=True, p=w)
+        out.extend((int(v), int(j)) for v in pick)
+    return out

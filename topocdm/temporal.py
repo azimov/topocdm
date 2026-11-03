@@ -239,3 +239,93 @@ def generate_dated(release, n_patients: int, periods: pd.DataFrame,
                     rows.append((i + 1, int(release.concept_ids[j]), dt))
     events = pd.DataFrame(rows, columns=["person_id", "concept_id", "event_date"])
     return visits, events
+
+
+# --------------------------------------------------------------------------
+# Seasonality and period effects: tau becomes (concept group x month)
+# --------------------------------------------------------------------------
+#
+# A single tau per year cannot represent a period that lifts some concepts and
+# suppresses others -- which is what a pandemic, a coding change or a formulary
+# switch does. Extending the multiplier to (concept group, month) costs H x M
+# numbers (18 x 120 = 2,160 for ten years) and is still fitted by counting:
+#
+#     tau[h, m] = observed_events(h, m) / expected_events(h, m)
+#
+# with expected from the cross-sectional fit and the person-time in that month.
+# It is the same indirect standardisation, one level finer.
+
+
+def month_list(years) -> np.ndarray:
+    out = []
+    for y in years:
+        for m in range(1, 13):
+            out.append(pd.Period(f"{int(y)}-{m:02d}", freq="M"))
+    return np.array(out, dtype=object)
+
+
+def month_exposure(periods: pd.DataFrame, months, persons) -> np.ndarray:
+    """Person-time observed in each calendar month. (n_persons, n_months)."""
+    s = periods.set_index("person_id").loc[persons, "start_date"].to_numpy("datetime64[D]")
+    e = periods.set_index("person_id").loc[persons, "end_date"].to_numpy("datetime64[D]")
+    out = np.zeros((len(persons), len(months)))
+    for k, mo in enumerate(months):
+        lo = np.datetime64(f"{mo.year}-{mo.month:02d}-01", "D")
+        hi = np.datetime64(mo.to_timestamp(how="end").date(), "D") + np.timedelta64(1, "D")
+        a = np.maximum(s, lo); b = np.minimum(e, hi)
+        days = np.clip((b - a) / np.timedelta64(1, "D"), 0, None)
+        out[:, k] = days / 365.25
+    return out
+
+
+def fit_seasonality(events: pd.DataFrame, periods: pd.DataFrame, params,
+                    years, concept_group: np.ndarray, concept_ids: np.ndarray):
+    """Fit tau[concept_group, month] by indirect standardisation."""
+    H = int(concept_group.max()) + 1
+    months = month_list(years)
+    persons = periods["person_id"].to_numpy()
+    expo = month_exposure(periods, months, persons)          # (N, M)
+
+    lam_h = np.bincount(concept_group, weights=params.lam, minlength=H)
+    grp_p = np.asarray(params.patient_group)[:len(persons)]
+    B = params.B if params.B is not None else np.ones((1, H))
+    if params.B is None:
+        grp_p = np.zeros(len(persons), dtype=int)
+    u = np.asarray(params.u, dtype=float)[:len(persons)]
+    # expected events for group h in month m: sum_i T_i(m) u_i lam_h B[g_i,h]
+    exp_hm = np.einsum("im,i,ih->hm", expo, u, B[grp_p] * lam_h[None, :])
+
+    idx_of = {int(c): k for k, c in enumerate(concept_ids)}
+    ev = events[events["concept_id"].isin(idx_of)]
+    grp = concept_group[[idx_of[int(c)] for c in ev["concept_id"]]]
+    mi = pd.PeriodIndex(ev["event_date"], freq="M")
+    pos = {m: k for k, m in enumerate(months)}
+    mpos = np.array([pos.get(m, -1) for m in mi])
+    ok = mpos >= 0
+    obs_hm = np.zeros((H, len(months)))
+    np.add.at(obs_hm, (grp[ok], mpos[ok]), 1.0)
+
+    tau = np.where(exp_hm > 0, obs_hm / np.maximum(exp_hm, 1e-9), 1.0)
+    tau = tau / np.mean(tau)
+    return months, tau, exp_hm, obs_hm
+
+
+def seasonal_residual(tau_hm: np.ndarray, months) -> tuple:
+    """Split tau into a month-of-year seasonal shape and a period residual.
+
+        seasonal[h, m]   average of tau over the same month in every year
+        residual[h, m]   tau / seasonal, i.e. what this particular month did
+
+    The residual is where a pandemic-shaped deviation shows up; the seasonal is
+    the recurring pattern.
+    """
+    moy = np.array([m.month for m in months])
+    H, M = tau_hm.shape
+    seasonal = np.zeros((H, 12))
+    for k in range(1, 13):
+        sel = moy == k
+        if sel.any():
+            seasonal[:, k - 1] = tau_hm[:, sel].mean(axis=1)
+    seasonal = np.maximum(seasonal, 1e-9)
+    resid = tau_hm / seasonal[:, moy - 1]
+    return seasonal, resid
