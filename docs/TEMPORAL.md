@@ -24,29 +24,44 @@ Generation draws observation periods by resampling (start, duration) pairs,
 then samples visits per person-year and attaches events to visits. Events are
 never dated outside an encounter.
 
-## 2. What the fit found: the burst is left truncation, not calendar time
+## 2. What the data actually looks like in time
 
-This CDM's events per year rise **7× between 2015 and 2016** (48k → 299k) and
-then grow smoothly. Fitting `tau_y` on 2016–2025 gives `tau_2016 = 3.06` and
-`tau_y ≈ 0.7–0.9` thereafter, which reproduces the observed yearly totals — but
-the synthetic data still puts **28% of all events in 2016** against the real
-7.7%.
+Event density per person-year, computed directly (not from tau):
 
-The diagnostic test settles it: move the window to 2017–2025 and the burst
-moves with it (`tau_2017 = 3.2`, 35% of synthetic events in 2017). **The burst
-follows the start of the analysis window, not the calendar.**
+| year | person-years | events | events/PY | visits/PY |
+|---|---|---|---|---|
+| 2010 | 6,048 | 36,941 | 6.1 | 1.02 |
+| 2013 | 6,390 | 39,192 | 6.1 | 1.11 |
+| 2015 | 6,638 | 48,564 | 7.3 | 1.45 |
+| **2016** | **7,491** | **298,613** | **39.9** | **3.12** |
+| 2019 | 8,394 | 374,865 | 44.7 | 3.14 |
+| 2022 | 8,652 | 392,234 | 45.3 | 3.16 |
+| 2024 | 8,592 | 407,088 | 47.4 | 3.19 |
+| 2025 | 6,243 | 413,743 | 66.3 | 4.48 |
 
-That is the signature of left truncation. Patients enter this database at a
-fixed date, and their prior history is compressed into their first observed
-year. A per-year intensity multiplier cannot represent that: it is a *cohort
-entry* effect, not a *time* effect.
+The structure is a **step change in density at 2016** — roughly 6 events per
+person-year before, 40–47 after — which persists to the end of the extract. It
+is a completeness boundary: the extract is sparsely populated before 2016 and
+densely populated after. It is not a one-year spike, and person-time barely
+moves across the boundary (6,638 → 7,491), so it is not an entry effect either.
 
-The consequence for generation is concrete: in the real data the first-year
-burst belongs to the patients who enter then, and those patients have high
-propensities. Generation draws propensity independently of entry date, so the
-burst is smeared across everyone. Reproducing it requires modelling the joint
-distribution of (observation start, propensity) — i.e. the entry process — not
-a richer `tau`.
+Fitted on 2016–2025, tau is close to flat:
+
+    tau = 0.92 0.96 0.96 0.97 1.12 1.06 0.94 0.94 0.94 1.19
+
+with a mild elevation in 2020–21 and 2025. Within the complete window the
+per-year multiplier is doing very little, which is what you would hope: the
+interesting temporal signal in this database is the boundary, not the years
+either side of it.
+
+**Correction.** An earlier version of this note reported a "first year burst"
+that followed the start of the analysis window, and attributed it to left
+truncation. That was wrong, and it was wrong because of a bug: event years were
+mapped to window positions with `np.searchsorted` without checking for an exact
+match, so every event *before* the window was silently counted in the window's
+first year. With that fixed, tau is flat and there is no burst. The lesson is
+the ordinary one — a diagnostic that looks like a finding should be checked
+against the raw tabulation before it is written down.
 
 ## 3. What this means for CohortIncidence comparisons
 

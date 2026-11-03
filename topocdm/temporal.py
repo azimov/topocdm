@@ -104,7 +104,13 @@ def fit_temporal(events: pd.DataFrame, visits: pd.DataFrame,
     ey = events["event_date"].dt.year.to_numpy()
     pid = events["person_id"].map(prow).to_numpy()
     idx = np.searchsorted(years, ey)
-    ok = np.isfinite(pid.astype(float)) & (idx >= 0) & (idx < len(years))
+    # searchsorted returns the insertion point, so an event *before* the window
+    # maps to 0. Require an exact match, or out-of-window events get counted in
+    # the first year.
+    in_range = (idx >= 0) & (idx < len(years))
+    exact = np.zeros(len(ey), dtype=bool)
+    exact[in_range] = years[idx[in_range]] == ey[in_range]
+    ok = np.isfinite(pid.astype(float)) & exact
     obs = np.zeros_like(expected)
     np.add.at(obs, (pid[ok].astype(int), idx[ok]), 1.0)
     inside = np.isin(ey[ok], years)
