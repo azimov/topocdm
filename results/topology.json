@@ -1,0 +1,8 @@
+{
+ "n_pairs": 920,
+ "median_raw_or": 1.7128985457573158,
+ "median_adjusted_or": 0.9054203301751602,
+ "frac_losing_half": 0.4641304347826087,
+ "frac_adjusted_below_1_2": 0.7695652173913043,
+ "frac_raw_above_2": 0.4597826086956522
+}
