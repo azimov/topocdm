@@ -263,3 +263,27 @@ def test_visit_model_recovers_burstiness():
     pairs = assign_to_visits(counts, 8, model, rng)
     assert len(pairs) == int(counts.sum())
     assert all(0 <= v < 8 for v, _ in pairs)
+
+
+def test_factor_term_increases_likelihood_and_rank():
+    """The rank-K interaction must improve the fit and raise the effective rank
+    of the mean matrix, which the block term alone cannot do."""
+    from topocdm.factors import fit_factors, _mu
+
+    rng = np.random.default_rng(0)
+    N, C, K = 220, 45, 4
+    a_true = rng.normal(0, 0.7, size=(N, K))
+    b_true = rng.normal(0, 0.7, size=(C, K))
+    mu0 = rng.uniform(0.4, 1.6, size=(N, C))
+    mu_true = mu0 * np.exp(a_true @ b_true.T)
+    X = rng.poisson(mu_true).astype(float)
+
+    base = float(np.sum(X * np.log(np.maximum(mu0, 1e-12)) - mu0))
+    f = fit_factors(mu0, X, K=K, n_iter=30)
+    assert f.history[-1] > base
+
+    def eff_rank(M):
+        s = np.linalg.svd(M, compute_uv=False)
+        return int((s / s[0] > 0.1).sum())
+
+    assert eff_rank(_mu(mu0, f.a, f.b)) > eff_rank(mu0)

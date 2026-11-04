@@ -38,6 +38,7 @@ from topocdm.omop import ConceptVocab, generate_omop_tables, write_omop_tables
 from topocdm.release import Release, make_release, sample_release
 from topocdm.sql import plan as sql_plan, CheckpointExecutor, Step
 from topocdm.visits import VisitModel, fit_visit_model, assign_to_visits
+from topocdm.factors import FactorFit, fit_factors
 from topocdm.distributed import (partition_stats, merge as merge_stats,
                                  m_step, fit_partitioned, Stats)
 from topocdm.temporal import (TemporalProfile, fit_temporal, sample_periods,
@@ -66,6 +67,7 @@ __all__ = [
     "Release", "make_release", "sample_release",
     "sql_plan", "CheckpointExecutor", "Step",
     "VisitModel", "fit_visit_model", "assign_to_visits",
+    "FactorFit", "fit_factors",
     "partition_stats", "merge_stats", "m_step", "fit_partitioned", "Stats",
     "TemporalProfile", "fit_temporal", "sample_periods", "generate_dated",
     "year_exposure", "cohort_incidence", "poisson_ci", "predictive_ci",
