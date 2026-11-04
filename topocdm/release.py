@@ -37,6 +37,12 @@ class Release:
     pi: np.ndarray | None = None
     propensity_shape: float = 1.0
     density: float = 1.0            # events per person-year, as observed
+    # person-time-weighted mean of the fitted propensities. The unweighted mean
+    # is 1 by the identifiability constraint, but that is not the population
+    # rate: patients with long observation windows have lower fitted u, so the
+    # T-weighted mean is well below 1 (0.60 on the Synthea slice). Sampling u
+    # with mean 1 and ignoring this over-predicts events by 1/0.60 ~ 1.7x.
+    propensity_tmean: float = 1.0
     n_patients_fitted: int = 0
     n_events_fitted: int = 0
     meta: dict = field(default_factory=dict)
@@ -112,6 +118,11 @@ def sample_release(release: Release, n_patients: int, years: float = 5.0,
     k = max(release.propensity_shape, 1e-6)
     u = rng.gamma(k, 1.0 / k, size=n_patients)
     u /= u.mean()
+    # match the person-time-weighted mean, not just the unweighted one
+    if release.propensity_tmean and release.propensity_tmean > 0:
+        w = float(np.sum(T * u))
+        if w > 0:
+            u *= release.propensity_tmean * float(T.sum()) / w
 
     H = int(release.concept_group.max()) + 1
     Lam_h = np.bincount(release.concept_group, weights=release.lam, minlength=H)
