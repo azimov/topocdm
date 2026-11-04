@@ -1,7 +1,7 @@
 """
 08 -- what the fit actually does, in one picture.
 
-Three panels, all from the real CDM:
+Three panels, all from the Synthea slice:
   A  before fitting, the model expects every patient to have the same number of
      records; after fitting, the expectation tracks what each patient actually
      has

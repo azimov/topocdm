@@ -4,7 +4,7 @@
 This is the experiment the empirical case rests on. The claim to test:
 
     a topology model fitted to a CDM generates synthetic patients whose
-    prevalence and incidence match held-out real patients, and whose joint
+    prevalence and incidence match held-out patients from the same source, and whose joint
     structure (codes per patient, co-occurrence, concentration) is right in a
     way that a marginals-only model cannot manage.
 

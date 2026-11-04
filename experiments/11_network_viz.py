@@ -1,5 +1,5 @@
 """
-11 -- real patients as networks, with time.
+11 -- Synthea patients as networks, with time.
 
 Any many-patient bipartite plot is a hairball: a patient has ~78 of 773
 concepts, so the graph saturates. These three figures each avoid that by

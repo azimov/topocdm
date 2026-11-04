@@ -2,7 +2,7 @@
 04 -- fit a real OMOP CDM (the local Synthea slice) and validate on held-out patients.
 
 This is the first test that is not simulated. It asks the same three questions
-as 02_validate.py, on 10,000 real patients and 773 real concepts:
+as 02_validate.py, on the 10,000-patient Synthea slice (773 concepts):
 
   1. Does the fit recover the marginal structure (prevalence, incidence)?
   2. Does it recover the joint structure (codes per patient, co-occurrence),
@@ -178,7 +178,7 @@ def main():
     ax.scatter(real_c, syn_c, s=8, color=C["green"], alpha=0.6)
     lim = [0, max(real_c.max(), syn_c.max()) * 1.05]
     ax.plot(lim, lim, "k:", lw=0.8)
-    ax.set_xlabel("real co-occurrence"); ax.set_ylabel("synthetic")
+    ax.set_xlabel("Synthea co-occurrence"); ax.set_ylabel("synthetic")
     ax.set_title(f"Co-occurrence is only partly reproduced (r={np.corrcoef(real_c, syn_c)[0,1]:.2f})", fontsize=9)
 
     fig.tight_layout()

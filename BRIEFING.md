@@ -8,7 +8,13 @@
 
 Given an OMOP CDM, fit a **generative model of its topology** that (a) can be scored — not merely simulated — and (b) produces synthetic patient data that reproduces the real database's structure. The intended use is twofold: synthetic data for methods development without patient-level disclosure, and a *null* against which observed rates can be judged ("what would this database look like if nothing caused anything?").
 
-Data are reduced to an incidence matrix `X` of shape `N × C`: counts of concept `j` for patient `i`, with person-time `T_i`. Synthea 10k slice: `N=10,000`, `C=773`, 4.93M events, 288,605 person-years.
+Data are reduced to an incidence matrix `X` of shape `N × C`: counts of concept `j` for patient `i`, with person-time `T_i`.
+
+### Data provenance — read this before the results
+
+**All data in this document are Synthea output, not real patient data.** Synthea is an open-source rule-based patient simulator; its records are realistic in form but are generated from clinical modules, not observed from a health system. Everywhere below, "observed" and "the CDM" mean *the Synthea slice loaded into this OMOP instance*: `N=10,000`, `C=773`, 4.93M events, 288,605 person-years.
+
+The consequence is that the comparisons below test **whether topocdm can reproduce another generator's output**, not whether it can reproduce a real database. Nothing here is evidence about real-world topology, real ascertainment, or real care-seeking behaviour. The validation is of the pipeline and of the model's capacity; it is not a claim about reality.
 
 ## 2. The model
 
@@ -50,7 +56,7 @@ Model selection uses the **mixture** likelihood `Σ_i log Σ_g π_g Π_j Poisson
 
 **Synthetic with known truth.** Mixture-AIC recovers the true `G`; latent groups recovered at ~81% accuracy; mean structure correlates with truth at r = 0.96.
 
-**Held-out patients, real CDM** (fit on 75%, predict 25%):
+**Held-out patients, Synthea slice** (fit on 75%, predict 25%):
 
 | model | held-out log-lik/event | degree L1 | co-occurrence r |
 |---|---|---|---|
@@ -66,12 +72,12 @@ Model selection uses the **mixture** likelihood `Σ_i log Σ_g π_g Π_j Poisson
 ## 6. Known weaknesses
 
 1. **Under-dispersion.** Synthetic per-patient event counts have CV 1.1 against 1.34 observed. Concept rates are compressed: low-rate concepts over-predicted, high-rate under-predicted (log-log slope < 1).
-2. **Co-occurrence only partly reproduced** (r = 0.24). Degree distribution and marginals are good; pairwise structure is not.
+2. **Co-occurrence only partly reproduced** (r = 0.24). Degree distribution and marginals are good; pairwise structure is not. The whole-CDM spectrum makes this sharper: Synthea's output is far higher-rank than the model reproduces (KS = 0.44), so the model is under-powered even against another simulator.
 3. **No calendar shocks.** COVID-19 sits flat at ~13/1000 PY while observed spikes to 91 then returns to zero. The seasonal term `τ(h, month)` can reproduce it in-sample but does not explain it, and will equally absorb artefacts.
 4. **No channel structure.** Ascertainment is modelled as one implicit channel; exam vs laboratory vs prescription is not distinguished.
 5. **No parameter uncertainty.** Point estimates only; predictive intervals are computed analytically from the fit but the covariance of `(λ, B, τ)` is not propagated.
 6. **Seasonal term not yet wired into generation.**
-7. **Nothing has been fitted to a real CDM.** All results are on a Synthea slice.
+7. **Nothing has been fitted to real data.** All results are on a Synthea slice. Since Synthea is itself a generator, the model has been tested against a simulation, not against a health system.
 
 ## 7. Questions for the reviewer
 

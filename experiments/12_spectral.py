@@ -30,11 +30,11 @@ fig, axes = plt.subplots(1, 2, figsize=(8.6, 3.3))
 
 ax = axes[0]
 k = np.arange(1, 41)
-ax.plot(k, s_real[:40], "o-", ms=3, color="#1f4e79", label="real CDM")
+ax.plot(k, s_real[:40], "o-", ms=3, color="#1f4e79", label="Synthea")
 ax.plot(k, s_syn[:40], "s-", ms=3, color="#c1440e", label="synthetic")
 ax.set_xlabel("rank")
 ax.set_ylabel("singular value of normalised incidence")
-ax.set_title("A. The real matrix is higher-rank\nthan the model produces", fontsize=9)
+ax.set_title("A. Synthea's matrix is higher-rank\nthan the model produces", fontsize=9)
 ax.legend(fontsize=7.5, frameon=False)
 
 ax = axes[1]
