@@ -86,6 +86,25 @@ def build_atoms(events: pd.DataFrame):
     return domain, concept, idx
 
 
+def _person_windows(periods: pd.DataFrame, persons):
+    """Collapse multiple observation periods to one row per person.
+
+    Returns (start, end, T): the first start, the last end, and the total
+    observed person-time (sum of the period durations, clipped at zero), all
+    aligned to `persons`. A CDM may have several observation periods per
+    patient; the model's N is patients, not period rows, so every layer must
+    use this aggregation.
+    """
+    pe = periods[["person_id", "start_date", "end_date"]].copy()
+    pe["days"] = (pe["end_date"] - pe["start_date"]).dt.days.clip(lower=0)
+    g = pe.groupby("person_id", sort=False)
+    start = g["start_date"].min().reindex(persons)
+    end = g["end_date"].max().reindex(persons)
+    days = g["days"].sum().reindex(persons).fillna(0.0)
+    T = np.maximum(days.to_numpy(dtype=float) / 365.25, 1.0 / 365.25)
+    return start, end, T
+
+
 def build_counts(events: pd.DataFrame, periods: pd.DataFrame,
                  domain: np.ndarray, concept: np.ndarray, idx: dict):
     """Patient x atom count matrix over mapped + unmapped atoms, plus person-time.
@@ -104,9 +123,7 @@ def build_counts(events: pd.DataFrame, periods: pd.DataFrame,
                           shape=(len(persons), len(domain)))
     X.sum_duplicates()
 
-    pe = periods.set_index("person_id").loc[persons]
-    T = np.maximum((pe["end_date"] - pe["start_date"]).dt.days.to_numpy(
-        dtype=float) / 365.25, 1.0 / 365.25)
+    _, _, T = _person_windows(periods, persons)
     return X, T, persons
 
 
@@ -137,9 +154,7 @@ def clinical_incidence(events: pd.DataFrame, periods: pd.DataFrame,
         keep = np.asarray(X.sum(axis=0)).ravel() >= min_events
         X = X[:, keep]
         concept_ids = concept_ids[keep]
-    pe = periods.set_index("person_id").loc[persons]
-    T = np.maximum((pe["end_date"] - pe["start_date"]).dt.days.to_numpy(
-        dtype=float) / 365.25, 1.0 / 365.25)
+    _, _, T = _person_windows(periods, persons)
     return X, concept_ids, persons, T
 
 
@@ -170,18 +185,24 @@ def tables_to_records(tables: dict) -> pd.DataFrame:
 
 
 def _year_exposure(periods: pd.DataFrame, years: np.ndarray):
-    """Person-time observed in each calendar year. (n_persons, n_years) in years."""
-    persons = periods["person_id"].to_numpy()
+    """Person-time observed in each calendar year. (n_persons, n_years) in years.
+
+    Multiple observation periods for one person are summed, so the row index is
+    the sorted unique person_id, not the period row.
+    """
+    unique = np.sort(periods["person_id"].unique())
+    prow = {int(p): i for i, p in enumerate(unique)}
+    rows = periods["person_id"].map(prow).to_numpy(dtype=np.int64)
     s = periods["start_date"].to_numpy(dtype="datetime64[D]")
     e = periods["end_date"].to_numpy(dtype="datetime64[D]")
-    out = np.zeros((len(persons), len(years)))
+    out = np.zeros((len(unique), len(years)))
     for k, y in enumerate(years):
         ys = np.datetime64(f"{int(y)}-01-01", "D")
         ye = np.datetime64(f"{int(y) + 1}-01-01", "D")
         lo = np.maximum(s, ys)
         hi = np.minimum(e, ye)
         d = np.clip((hi - lo) / np.timedelta64(1, "D"), 0, None)
-        out[:, k] = d / 365.25
+        np.add.at(out[:, k], rows, d / 365.25)
     return out
 
 
@@ -470,10 +491,9 @@ def fit_perdomain(events: pd.DataFrame, periods: pd.DataFrame, K: int = 20,
     # mortality fraction and the empirical distribution of time-to-death as a
     # fraction of the observation window, which reproduces both the level
     # (10.4%) and the within-window timing without assuming a parametric shape.
-    ob_start = periods.set_index("person_id").loc[persons, "start_date"].to_numpy(
-        dtype="datetime64[D]")
-    ob_end = periods.set_index("person_id").loc[persons, "end_date"].to_numpy(
-        dtype="datetime64[D]")
+    ob_start_s, ob_end_s, _ = _person_windows(periods, persons)
+    ob_start = ob_start_s.to_numpy(dtype="datetime64[D]")
+    ob_end = ob_end_s.to_numpy(dtype="datetime64[D]")
     death = events[events["domain"] == "death"]
     died = death.set_index("person_id")["start_date"].to_dict()
     follow = (ob_end - ob_start) / np.timedelta64(1, "D")

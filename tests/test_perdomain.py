@@ -142,3 +142,30 @@ def test_spectrum_matches_normalised_svd():
     # the full spectrum is padded with zeros to max(n, m)
     assert np.allclose(np.sort(s)[::-1][:k], s_ref, atol=1e-6)
     assert np.allclose(s[k:], 0.0)
+
+
+def test_multiple_observation_periods_per_person():
+    """A CDM may have several observation periods per patient.
+
+    N is patients, not period rows; T, the year exposure and the death window
+    must all be aggregated per person.
+    """
+    events, periods = _synthetic(n=200, seed=2)
+    mid = periods["start_date"] + (periods["end_date"] - periods["start_date"]) / 2
+    periods2 = pd.concat([
+        periods.assign(end_date=mid),
+        periods.assign(start_date=mid),
+    ], ignore_index=True)
+
+    ad, ac, idx = pdm.build_atoms(events)
+    X, T, persons = pdm.build_counts(events, periods2, ad, ac, idx)
+    assert X.shape[0] == len(persons) == 200
+    assert len(T) == 200
+
+    Xc, ids, ps, Tc = pdm.clinical_incidence(events, periods2)
+    assert len(Tc) == len(ps) == 200
+
+    fit = pdm.fit_perdomain(events, periods2, K=0)
+    assert fit.meta["n_patients"] == 200
+    assert len(fit.u) == 200
+    assert len(fit.lam_t["condition"]) == len(fit.years)
