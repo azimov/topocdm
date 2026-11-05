@@ -13,6 +13,8 @@ FIG, RES = "figs", "results"
 # visit model: measured in experiments/14
 visit = [(7_850, 0.480, 7), (15_900, 0.476, 15), (32_600, 0.486, 25),
          (68_400, 0.467, 42), (107_400, 0.464, 51), (195_000, 0.464, 58)]
+# + one heavy-tailed patient multiplier, Gamma(k=0.15): 1 extra parameter, no N
+visit_het = [(32_601, 0.376, 27), (195_001, 0.364, 53)]
 # fixed effects: block model and block+rank-15 factors (experiments/12 and earlier).
 # these counts EXCLUDE the N per-patient propensities, shown separately below.
 fixed = [(1_058 + 10_000, 0.413, 8), (1_058 + 11_595 + 10_000, 0.366, 75)]
@@ -24,6 +26,8 @@ ax.plot([v[0] for v in visit], [v[1] for v in visit], "o-", ms=5,
         color="#C1440E", label="visit-anchored (no N dependence)")
 ax.plot([f[0] for f in fixed], [f[1] for f in fixed], "s--", ms=6,
         color="#2C6E9B", label="fixed effects (includes N=10,000)")
+ax.plot([v[0] for v in visit_het], [v[1] for v in visit_het], "^:", ms=7,
+        color="#4E8B4A", label="visit-anchored + heavy-tailed patient effect")
 ax.set_xscale("log")
 ax.set_xlabel("model parameters")
 ax.set_ylabel("spectral distance (KS)")
@@ -33,6 +37,7 @@ ax.legend(fontsize=7, frameon=False, loc="upper right")
 ax = axes[1]
 ax.plot([v[0] for v in visit], [v[2] for v in visit], "o-", ms=5, color="#C1440E")
 ax.plot([f[0] for f in fixed], [f[2] for f in fixed], "s--", ms=6, color="#2C6E9B")
+ax.plot([v[0] for v in visit_het], [v[2] for v in visit_het], "^:", ms=7, color="#4E8B4A")
 ax.axhline(real_rank, color="k", ls=":", lw=1.0)
 ax.text(8e3, real_rank + 2, f"real rank = {real_rank}", fontsize=7.5)
 ax.set_xscale("log")
@@ -42,5 +47,5 @@ ax.set_title("B. Rank recovered", fontsize=9)
 fig.tight_layout()
 fig.savefig(f"{FIG}/fig25_model_comparison.png", bbox_inches="tight")
 print("wrote", f"{FIG}/fig25_model_comparison.png")
-json.dump(dict(visit=visit, fixed=fixed, real_rank=real_rank),
+json.dump(dict(visit=visit, visit_het=visit_het, fixed=fixed, real_rank=real_rank),
           open(f"{RES}/model_comparison.json", "w"), indent=1)

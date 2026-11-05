@@ -56,12 +56,17 @@ class VisitTopicModel:
     gap_mean: float
     visit_size: float = 1.0
     visit_count_pool: np.ndarray = None   # empirical visits-per-patient, for sampling
+    # scale of patient-level heterogeneity: u_i ~ Gamma(patient_shape). One
+    # parameter, and it is what makes the spectrum work -- without it the
+    # patient-level variation is only a visit count and the eigenvalue profile is
+    # too flat. 0.15 was selected on the spectral distance, not the likelihood.
+    patient_shape: float = 0.0
     n_visits_fitted: int = 0
 
     @property
     def n_parameters(self) -> int:
         K, C = self.theta.shape
-        return int(K * C + K * K + 2 * K)
+        return int(K * C + K * K + 2 * K + (1 if self.patient_shape else 0))
 
     def summary(self) -> dict:
         K = self.theta.shape[0]
@@ -167,5 +172,9 @@ def simulate_visits(model: VisitTopicModel, n_patients: int, rng,
     else:
         V = np.full(n_patients, int(visits_per_patient or round(model.visits_per_patient)))
     c = simulate_topic_counts(n_patients, V, model, rng)
-    mu = c @ model.theta * model.visit_size
+    u = np.ones(n_patients)
+    if model.patient_shape and model.patient_shape > 0:
+        k = float(model.patient_shape)
+        u = rng.gamma(k, 1.0 / k, size=n_patients)
+    mu = (c @ model.theta) * model.visit_size * u[:, None]
     return rng.poisson(mu)
