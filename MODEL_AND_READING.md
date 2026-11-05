@@ -1,122 +1,133 @@
-# The model in network terms, and what to read next
+# The visit-anchored model, in network terms
+
+*A restatement of the previous document. The model has changed: time is now part of the object rather than a covariate layered on top of it.*
 
 ---
 
 ## Part 1 — The model in six steps
 
-![The model in network terms](figs/fig24_model_steps.png)
+![The visit-anchored model in six steps](figs/fig26_visittopic_steps.png)
 
-**Step 1 — the object.** A CDM is a bipartite graph. Patients on one side, concepts on the other. An edge exists when a patient has at least one record of a concept. Nothing else is observed; every "disease network" you have seen is a projection of this graph.
+**Step 1 — the object is a stream, not a matrix.** A patient is a sequence of visits at times. The previous model collapsed this to a bag of concepts, which is why it had no way to represent order. Here the timeline is the first thing you draw.
 
-**Step 2 — node volume.** Give every patient one number, `u_i`, its contact volume: how many edges it will get. This is the parameter that does the epidemiological work. A patient who attends often accumulates more codes, including incidental ones.
+**Step 2 — a visit is a set of concepts at one time.** The visit is the unit of observation, which is what the CDM actually is. A patient's record is not "they have 78 concepts"; it is "they came 44 times, and this is what happened each time".
 
-**Step 3 — node frequency.** Give every concept one number, `λ_j`, how often it occurs per unit of contact. Prevalence lives here.
+**Step 3 — each visit is drawn from a visit type.** There are K types. Type `k` has a catalogue `θ_k` over the C concepts: what a visit of that type tends to contain. This is the bipartite half of the model — a visit on one side, concepts on the other.
 
-**Step 4 — block structure.** Sort patients into ~15 groups and concepts into ~18 groups. `B[g,h]` says how strongly patient group `g` attracts concept group `h`, above and beyond volume and frequency. This is your thesis's block model, with a likelihood attached.
+**Step 4 — the types follow a Markov chain.** `z_v | z_{v-1} ~ T[z_{v-1}, ·]`. **This is the time dynamic.** It says that what happens at the next visit depends on what happened at the last one. In the data the chain is strongly persistent: visits cluster into runs of the same type, which is why a patient's record comes to look like a trajectory rather than a bag.
 
-**Step 5 — the rule.** The expected number of records for one patient–concept pair is the product of four terms:
+**Step 5 — what the patient accumulates.**
 
 ```
-expected = time at risk × u_patient × λ_concept × B[patient group, concept group]
+E[X_ij] = Σ_k c_ik · θ_kj
 ```
 
-Because it is a product over pairs, the probability of the whole database factorises into one term per pair. **That factorisation is the entire technical difference from CiGRAM.** Your model sampled edges without replacement, which couples every edge to every other and leaves no closed form. Here, edges given the parameters are independent, so the graph can be scored.
+where `c_ik` is how many visits of type k the patient had. A patient's record is a *sum over their visits*. The rank of the mean matrix is at most K, and K is a knob rather than a consequence of how you cut the partition.
 
-**Step 6 — fitting.** You don't know the groups. If you did, fitting the rest is counting. If you knew the rest, guessing a group is a comparison. So alternate, about fifteen times, and stop when nothing moves.
+**Step 6 — what it costs and how it is fitted.**
+
+```
+θ: K×C        T: K×K        ρ: K        + 1
+```
+
+**No term in the number of patients.** The per-patient object `c_ik` is a visit count — a latent draw, not a parameter. Fitting is EM: guess each visit's type given the catalogues, refit the catalogues from the types, repeat. One sparse matrix product per pass; 443,000 visits in five seconds.
 
 ---
 
-## Part 2 — Reading, organised by the question you need to answer
+## Part 2 — What changed, and why it matters
 
-I have verified each of these against arXiv, Crossref or PubMed in this session. Where a claim is not verifiable I say so.
+The previous statement described a patient as a bag of concepts with a free propensity and a block structure. That model could be scored and it fitted well, but it had no representation of time at all: two patients with the same concepts in opposite order were identical to it.
 
-### "What family is my model actually in?"
+This one makes three changes at once:
 
-**Karrer & Newman (2011)**, *Stochastic blockmodels and community structure in networks*, Phys Rev E 83:016107. [arXiv:1008.3926](https://arxiv.org/abs/1008.3926)
-The degree-corrected SBM. This is the paper that separates "how many edges a node has" from "who it connects to" — the move your `u_i` makes. Read §II for the parameterisation.
+**Time is structural.** The Markov chain over visit types is the mechanism that produces trajectories. It is not a seasonality term or a calendar covariate; it is the generator of the sequence.
 
-**Abbe (2017)**, *Community detection and stochastic block models*, Foundations and Trends in Communications and Information Theory. [arXiv:1703.10146](https://arxiv.org/abs/1703.10146)
-The survey. Read it for the distinction between *detection* (does a partition exist?) and *recovery* (can you find it?), and for the information-theoretic limits. This is what tells you whether a claim like "the model found 15 groups" could ever be sharp.
+**The unit is the visit.** This matches the CDM, and it makes the time dynamic cheap — you need one transition matrix `K×K`, not a per-patient sequence model.
 
-**Rohe, Chatterjee & Yu (2011)**, *Spectral clustering and the high-dimensional stochastic blockmodel*, Annals of Statistics. [arXiv:1007.1684](https://arxiv.org/abs/1007.1684)
-Why spectral methods work on SBMs, and when they stop working. Relevant because your thesis's spectral distance is doing the same kind of work.
+**Parameters stop scaling with patients.** The old model fitted one propensity per patient. That is fine at 10,000 and untenable at 10⁸. Here the count is `K·C + K² + 2K + 1`.
 
-**Zhao, Levina & Zhu (2012)**, *Consistency of community detection under degree-corrected SBMs*, Annals of Statistics. [arXiv:1110.3854](https://arxiv.org/abs/1110.3854)
-The degree-corrected case specifically. Short, and it tells you what can and cannot be recovered when degree heterogeneity is large — which is the situation in a CDM.
+The cost is that a patient's individuality has to be represented by something other than a free parameter. It turns out to be one number: a heavy-tailed multiplier `u_i ~ Gamma(k)`, with `k ≈ 0.15`. Without it the spectral distance is 0.453; with it, 0.364. One parameter.
 
-### "Can I trust the parameters?"
+**What this buys, measured:**
 
-**Peel, Larremore & Clauset (2017)**, *The ground truth about metadata and community detection in networks*, Science Advances. [arXiv:1608.05878](https://arxiv.org/abs/1608.05878)
-Proves no algorithm uniquely solves community detection. This bounds every claim in the project: "the model found groups" is always a statement about a model and its null, never about the world.
+| model | spectral KS | rank | parameters |
+|---|---|---|---|
+| fixed-effects block | 0.413 | 8 | N + 1,058 |
+| fixed-effects + factors | 0.366 | 75 | N + 12,653 |
+| visit-anchored, K=200 | 0.453 | 57 | 195,001 |
+| **visit-anchored + heavy tails** | **0.364** | 53 | **195,001, flat in N** |
 
-**Pamfil, Howison & Lambiotte (2018)**, *Relating modularity maximization and stochastic block models in multilayer networks*. [arXiv:1804.01964](https://arxiv.org/abs/1804.01964)
-Modularity is MAP inference under a specific SBM. This formalises the critique you made in the thesis and tells you what your module definition was implicitly assuming.
+The visit-anchored model matches the spectral distance of the fixed-effects model with no per-patient parameter. The crossover in fitting cost is around 182,000 patients; below that the fixed-effects model is cheaper, above it this one is, and this one is the only one of the two that represents time.
 
-**Bickel & Chen (2009)**, *A nonparametric view of network models and Newman–Girvan and other modularities*, PNAS. [doi:10.1073/pnas.0907096106](https://doi.org/10.1073/pnas.0907096106)
-The same argument from the nonparametric side: a null model is a statistical assumption, not a convention.
+---
 
-### "How do I choose the number of groups?"
+## Part 3 — Reading, by the question you need to answer
 
-**Latouche, Birmelé & Ambroise (2012)**, *Variational Bayesian inference and complexity control for stochastic block models*, Statistical Modelling.
-Not verified in this session — I could not confirm a stable identifier. Read it for the ICL criterion, which is the standard alternative to AIC/BIC for mixtures. The lesson from this project is directly relevant: using the *fitting* likelihood for model selection over-selects, because the latent labels are estimated and never counted.
+I verified each of these against Crossref or arXiv in this session. The one I could not verify is marked.
 
-### "How do I get rank, not just blocks?"
-
-**Hoff, Raftery & Handcock (2002)**, *Latent space approaches to social network analysis*, JASA. [doi:10.1198/016214502388618906](https://doi.org/10.1198/016214502388618906)
-The ancestor of every latent-position network model, including CiGRAM. Nodes get coordinates; edges depend on distance. Worth reading to see how your geometric intuition was formalised statistically.
-
-**Gopalan, Hofman & Blei (2014)**, *Scalable recommendation with Poisson factorization*, UAI. [arXiv:1311.1704](https://arxiv.org/abs/1311.1704)
-Poisson matrix factorisation: users × items with latent factors and counts. This is exactly the factor term added to the model, in a recommendation setting, with variational inference at scale. The closest thing to a blueprint for the rank problem.
-
-**Townes, Hicks, Aryee & Irizarry (2019)**, *Feature selection and dimension reduction for single-cell RNA-Seq based on a multinomial model*, Genome Biology. [doi:10.1186/s13059-019-1861-6](https://doi.org/10.1186/s13059-019-1861-6)
-GLM-PCA. Low-rank structure for **count matrices** specifically, which is what a patient × concept matrix is. The methods transfer almost directly; the bioinformatics literature solved this problem before epidemiology did.
-
-### "How should I describe and compare graphs?"
-
-**von Luxburg (2007)**, *A tutorial on spectral clustering*, Statistics and Computing. [arXiv:0711.0189](https://arxiv.org/abs/0711.0189)
-The reference for what a Laplacian spectrum does and does not encode. You already know the technique; this is the statement of its guarantees.
-
-### "How do I add time?"
+### "How do I put time into a network model?"
 
 **Butts (2008)**, *A relational event framework for social action*, Sociological Methodology. [doi:10.1111/j.1467-9531.2008.00203.x](https://doi.org/10.1111/j.1467-9531.2008.00203.x)
-Events as they happen, with intensity depending on the history so far. This is the principled version of the visit/transition layer. Read for the likelihood, which is where the difficulty lies.
+Events as they happen, with intensity depending on the history. This is now the closest paper to the model: read it for the likelihood construction and for how the history dependence is parameterised.
 
-### "What has already been done in multiplex?"
+**Holme & Saramäki (2012)**, *Temporal networks*, Physics Reports 519:97–125. [doi:10.1016/j.physrep.2012.03.001](https://doi.org/10.1016/j.physrep.2012.03.001)
+The survey. Read it for the taxonomy — sequence versus interval representations, and why "the network at time t" is usually the wrong object.
 
-**Mucha, Richardson, Macon, Porter & Onnela (2010)**, *Community structure in time-dependent, multiscale, and multiplex networks*, Science. [arXiv:0911.1824](https://arxiv.org/abs/0911.1824)
-Multislice modularity. The canonical method, and the one the field has since found parameter-degenerate.
+**Masuda & Lambiotte (2016)**, *A Guide to Temporal Networks*, World Scientific. [doi:10.1142/q0033](https://doi.org/10.1142/q0033)
+The textbook. Chapter 5 covers models of temporal networks, which is the chapter that matters.
 
-**Taylor, Shai, Stanley et al. (2016)**, *Enhanced detectability of community structure in multilayer networks through layer aggregation*, PRL. [arXiv:1511.05271](https://arxiv.org/abs/1511.05271)
-Summing layers is a very strong baseline. This is the result that kills naive multiplex claims, and it reproduced in this project.
+**Hawkes (1971)**, *Spectra of some self-exciting and mutually exciting point processes*, Biometrika 58:83–90. [doi:10.1093/biomet/58.1.83](https://doi.org/10.1093/biomet/58.1.83)
+Worth reading for the title alone: a point process whose *spectrum* is the object of study. If you want to extend the visit model beyond a first-order Markov chain, this is the family that does it — the interaction kernel is a network over concepts.
 
-**Bazzi, Jeub, Arenas, Howison & Porter (2020)**, *A framework for the construction of generative models for mesoscale structure in multilayer networks*, Phys Rev Research. [arXiv:1608.06196](https://arxiv.org/abs/1608.06196)
-The modern version of what CiGRAM attempted: generative benchmark models with explicit, user-specified structure.
+### "What is a visit type, statistically?"
 
-**De Bacco, Power, Larremore & Moore (2017)**, *Community detection, link prediction, and layer interdependence in multilayer networks*, PRE. [arXiv:1701.01369](https://arxiv.org/abs/1701.01369)
-The most flexible multilayer SBM, and honest about measuring interdependence rather than assuming it.
+**Blei, Ng & Jordan (2003)**, *Latent Dirichlet allocation*, JMLR 3:993–1022.
+The visit type is a topic and the visit is a document. LDA is the Bayesian version of the model fitted here; the difference is that LDA puts priors on `θ` and on the per-document mix, which is exactly where the sparsity and the heavy tails would come from. No DOI on the JMLR version; the 2001 NIPS paper is [doi:10.7551/mitpress/1120.003.0082](https://doi.org/10.7551/mitpress/1120.003.0082).
 
-### "Will epidemiologists accept the bias argument?"
+**Gopalan, Hofman & Blei (2014)**, *Scalable recommendation with Poisson factorization*, UAI. [arXiv:1311.1704](https://arxiv.org/abs/1311.1704)
+Poisson factorisation instead of multinomial. Matters if you stop conditioning on visit size, and it is the reference for the rank-K structure under a count likelihood.
+
+**Townes, Hicks, Aryee & Irizarry (2019)**, *Feature selection and dimension reduction for single-cell RNA-Seq based on a multinomial model*, Genome Biology. [doi:10.1186/s13059-019-1861-6](https://doi.org/10.1186/s13059-019-1861-6)
+GLM-PCA, for count matrices with low-rank structure. The closest thing to a worked example of the estimation problem.
+
+### "Is the structure real, or an artefact of the method?"
+
+**Peel, Larremore & Clauset (2017)**, *The ground truth about metadata and community detection in networks*, Science Advances. [arXiv:1608.05878](https://arxiv.org/abs/1608.05878)
+No algorithm uniquely solves community detection. Bounds any claim of the form "the model found 200 visit types".
+
+**Karrer & Newman (2011)**, *Stochastic blockmodels and community structure in networks*, Phys Rev E 83:016107. [arXiv:1008.3926](https://arxiv.org/abs/1008.3926)
+Still the reference for separating node volume from node affinity. In this model that separation sits in `θ_k` versus the visit counts.
+
+**Abbe (2017)**, *Community detection and stochastic block models*. [arXiv:1703.10146](https://arxiv.org/abs/1703.10146)
+For the limits: how many types can be recovered, at what signal strength. Relevant when choosing K.
+
+### "How do I describe and compare the result?"
+
+**von Luxburg (2007)**, *A tutorial on spectral clustering*, Statistics and Computing. [arXiv:0711.0189](https://arxiv.org/abs/0711.0189)
+What a Laplacian spectrum does and does not encode. The spectral comparison is the diagnostic that disagreed with every summary statistic in this project, so it is worth knowing its guarantees.
+
+### "Will epidemiology accept the argument?"
 
 **Griffith et al. (2020)**, *Collider bias undermines our understanding of COVID-19 disease risk and severity*, Nature Communications. [PMID 33184277](https://pubmed.ncbi.nlm.nih.gov/33184277/)
-Conditioning on healthcare contact induces associations among its causes. This is the mechanism the model claims to capture. The ingrown toenail, stated generally.
+Conditioning on healthcare contact induces associations among its causes. In this model, contact is the visit process itself, which is a cleaner place to put it than a per-patient propensity.
 
 **Schuemie et al. (2018)**, *Improving reproducibility by using high-throughput observational studies with empirical calibration*, Phil Trans R Soc A. [PMID 30082302](https://pubmed.ncbi.nlm.nih.gov/30082302/)
-Negative controls and empirical calibration. The standard your method has to beat, and the experiment in §4 of the previous document is designed against it.
+Negative controls and empirical calibration. The benchmark the bias claim has to meet.
 
 **Lipsitch, Tchetgen Tchetgen & Cohen (2010)**, *Negative controls: a tool for detecting confounding and bias in observational studies*, Epidemiology. [PMID 20335814](https://pubmed.ncbi.nlm.nih.gov/20335814/)
-The original statement of the negative-control idea, and the clearest on what it does and does not identify.
+The original statement, and the clearest on what a negative control does and does not identify.
 
-**Pastor-Satorras, Castellano, Van Mieghem & Vespignani (2015)**, *Epidemic processes in complex networks*, Rev Mod Phys 87:925. [doi:10.1103/RevModPhys.87.925](https://doi.org/10.1103/RevModPhys.87.925)
-The reference for how network structure changes epidemic dynamics. Relevant if claim 3 ever extends to transmission rather than recording.
+### "What was the previous model, and what was wrong with it?"
+
+**Latouche, Birmelé & Ambroise (2012)**, *Variational Bayesian inference and complexity control for stochastic block models*, Statistical Modelling.
+Not verified in this session — I could not confirm a stable identifier. Read for the ICL criterion.
+
+The bag-of-concepts model and its results are in `WHERE_THIS_STANDS.md`; the visit model supersedes it but the criticism there still applies to the epidemiology claims.
 
 ---
 
-## Part 3 — The three I would actually read first
+## Part 4 — The three to read first
 
-If you read only three:
-
-1. **Karrer & Newman (2011)** — so you can see your own model in the standard notation, and judge whether the parameterisation is sound.
-2. **Gopalan, Hofman & Blei (2014)** — because the rank problem is the live one, and this is the blueprint.
-3. **Schuemie et al. (2018)** — because the negative-control experiment is the one that decides whether any of this is a contribution.
-
-Everything else is support.
+1. **Butts (2008)** — because the time dynamic is now the core of the model and this is the paper that treats an event stream as the object rather than a derived adjacency matrix.
+2. **Blei, Ng & Jordan (2003)** — because the visit type is a topic, and the Bayesian version is where the sparsity and heavy tails should come from rather than being added as a single fitted constant.
+3. **Hawkes (1971)** — because a first-order chain is the simplest possible time dynamic, and this is the family that replaces it if the data needs memory beyond one step.
