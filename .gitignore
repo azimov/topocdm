@@ -29,3 +29,7 @@ topocdm/_fast.so
 # R artefacts
 .Rhistory
 .RData
+
+# release artefacts
+topocdm-*.tar.gz
+topocdm-*.bundle
