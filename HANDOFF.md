@@ -105,12 +105,13 @@ topocdm/
                   spectrum; sample-scalable (max_patients, sparse IPF)
   fast.py + _fast.c  CSR mixture likelihood via ctypes, 21x faster
   cohort_incidence.py, io.py
-scripts/extract_dated.sh  NEW: events with end dates -> data/events_full.csv
-experiments/01..16  earlier analyses; 17_perdomain.py, 18_negative_control.py NEW
+scripts/extract_dated.sh  events with end dates -> data/events_full.csv
+scripts/fit_databricks.py  T-SQL -> Spark SQL (circepy SQLRender) via the Databricks connector
+experiments/01..16  earlier analyses; 17_perdomain.py, 18_negative_control.py, 19_mimic.py
 tests/test_model.py (15) + tests/test_perdomain.py (7), 22 passing
 figs/, results/
-docs/MODEL_V2.md, docs/RESULTS_PERDOMAIN.md (NEW), WHERE_THIS_STANDS.md,
-BRIEFING.md, MODEL_AND_READING.md, docs/*.md
+docs/MODEL_V2.md, docs/RESULTS_PERDOMAIN.md, docs/MIMIC_RUN.md,
+docs/DATABRICKS.md, WHERE_THIS_STANDS.md, BRIEFING.md, MODEL_AND_READING.md
 ```
 
 Repo: **github.com/azimov/topocdm** (private, MIT). PDFs are gitignored.
