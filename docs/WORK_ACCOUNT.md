@@ -139,6 +139,27 @@ someone with permission. In order of preference:
 4. **Do not create a public repo as a workaround.** That is the one option that
    defeats the purpose.
 
+## Snapshot or bundle instead of a mirror
+
+If you cannot create a repository in the work account, a file is a valid
+fallback. `scripts/make_release.sh` writes a clean, SHA-named archive from
+`git archive` (tracked files only: no `.git`, `.secrets/`, `data/`, `.venv/`)
+and, with `--bundle`, a single-file git repository with the full history.
+
+```bash
+bash scripts/make_release.sh --bundle
+```
+
+- The **tarball** is a snapshot: no history, cannot be pulled from. Use it
+  when you want a clean copy with no history.
+- The **bundle** is a real repository in one file: clone it on the work laptop
+  with `git clone topocdm-<sha>.bundle topocdm`, and it supports incremental
+  fetch. Use it when you need to work on the code and bring changes back.
+- Carry either through the approved transfer channel.
+- If the work scanner specifically requires a GitHub repository, neither
+  satisfies it; use the enterprise org or the admin route above.
+- Do not create a public release just to make a tarball downloadable.
+
 ## Rules
 
 - **Neither repository is public.** The work mirror exists so the scanner can

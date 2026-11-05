@@ -25,3 +25,7 @@ src/cigram/
 # compiled kernel (build with scripts/build_fast.sh)
 topocdm/_fast.so
 # extracted CDM data
+
+# R artefacts
+.Rhistory
+.RData
