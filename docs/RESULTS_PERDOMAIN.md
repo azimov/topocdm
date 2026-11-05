@@ -35,9 +35,9 @@ The rest of this document is the evidence for those four sentences.
 
 The row counts reproduce the original audit exactly. Mapped concepts: 218 condition, 202 drug, 156 measurement, 79 observation, 118 procedure, 3 visit. Unmapped records are kept as a per-domain atom, because the null category is a property of the domain (44% of procedures) and has to be generated, not discarded.
 
-### The finding that changes the specification
+### A fixture finding, not a specification claim
 
-`MODEL_V2.md` §2 assumes `log D_j ~ Normal(μ_d, s_d²)`. **The durations are not log-normal.** They are bimodal:
+`MODEL_V2.md` §2 assumes `log D_j ~ Normal(μ_d, s_d²)`. On Synthea it fails — the observed durations are bimodal:
 
 | | condition | drug |
 |---|---:|---:|
@@ -46,25 +46,29 @@ The row counts reproduce the original audit exactly. Mapped concepts: 218 condit
 | median, all | 364 d | 365 d |
 | median, positive only | 371 d | 371 d |
 
-There is a point mass at zero (acute, one-off coding) and a sharp mode near one year (chronic management), with a heavy tail between. A single log-normal fitted to the positive durations has mean log 5.45 and sd 1.56 (condition) and misplaces the mass; a two-component mixture helps the shape but puts the generated condition median at 208 days against 364 observed. The problem is structural: a smooth log-normal cannot represent a sharp one-year mode and a heavy tail at once without moving the median.
+There is a point mass at zero and a sharp mode near one year, with a heavy tail between. A single log-normal fitted to the positive durations has mean log 5.45 and sd 1.56 (condition) and misplaces the mass; a two-component mixture helps the shape but puts the generated condition median at 208 days against 364 observed.
 
-The working model is therefore a **zero-inflated empirical quantile function**: a point mass at 0 plus 101 quantiles of the positive durations, sampled by inversion. It reproduces the observed quantiles almost exactly (condition p50 364 observed vs 359 generated, p90 1099 vs 1099; drug exact) and is still compact — 102 numbers per interval domain. The parametric attempts are kept in the fit object as the diagnostic that the specification's assumption fails.
+**But the shape is a property of Synthea, not of CDM data.** Synthea sets many condition end dates and drug supplies by rule (a one-year default is common), so the 0/365 spikes are what the simulator does, not what a health system does. A log-normal fitted here would be a model of Synthea's rules; a quantile table fitted here is a model of the same rules with more numbers. Neither is evidence about the duration distribution a production CDM will have.
 
-This is a correction to the specification, not a preference. The "4 parameters each" in §2.4 does not correspond to any model that reproduces this data; the duration piece that does is a quantile table, not four numbers.
+What the fixture does establish is narrower and still useful: **the pipeline must estimate the duration distribution rather than assume a family.** The model therefore carries the duration density as an estimated object — here a zero-inflated empirical quantile function (a point mass plus 101 quantiles, sampled by inversion), which reproduces the fixture's quantiles almost exactly — and keeps the log-normal and mixture fits as diagnostics. On a production CDM the first step is to run that diagnostic, not to assume the answer.
+
+The "4 parameters each" in §2.4 is a guess about a distribution nobody has seen. The honest parameterisation is a small shape-free summary, and it is a nuisance component, not a structural claim.
 
 ### The death process
 
-A single Weibull hazard is also a poor fit. Death in Synthea is driven by disease modules, not a smooth hazard: 10.4% of patients die, at a median of 41 years from observation start, while the fitted Weibull puts the characteristic life at 103 years and under-predicts early mortality. For generation the model stores the observed mortality fraction and the empirical distribution of time-to-death **as a fraction of the observation window**. That reproduces both the 10.4% level and the within-window timing without pretending to a parametric shape that does not hold. It is a bootstrap of the death process, and it is labelled as such.
+The same applies. A single Weibull hazard does not fit Synthea: 10.4% of patients die, at a median of 41 years from observation start, while the fitted Weibull puts the characteristic life at 103 years and under-predicts early mortality. That says Synthea's deaths are module-driven, not that a production CDM's are. The model estimates the death timing nonparametrically — the observed mortality fraction and the empirical within-window distribution — rather than assuming a hazard shape. On real data this should be re-estimated and reported, not reused.
 
 ---
 
 ## 2. The per-domain model
 
-The fit is the specification of `MODEL_V2.md` §2, with the duration and death corrections above:
+The fit is the specification of `MODEL_V2.md` §2, with the duration and death layers estimated rather than assumed:
 
 - **Layer 1, per domain.** Interval processes for condition and drug (start process + duration distribution); point processes for measurement, observation and procedure; visit as its own degenerate-interval domain; death absorbing.
 - **Layer 2, patient heterogeneity.** One shared `u_i ~ Gamma(k)`, `k = 2.13`, estimated by the marginal negative-binomial likelihood of each patient's total event count. The person-time-weighted mean of the fitted `u` is 0.59; generation matches that, not the unweighted mean of 1, which is what stops the 1.7× over-prediction that cost time earlier.
 - **Layer 3, recording dependence.** A rank-20 coupling `exp(z_i · β_j)` on top of the marginal structure, fitted by the damped-Newton factor fit. `z` has a shared Gaussian distribution; generation samples from it, so there is no per-patient parameter in the release. **This is recording dependence, not clinical or causal dependence.** A lab drawn because a condition is suspected is a fact about how the database records care. Every appearance of the coupling in the code and in this document carries that label.
+
+**What transfers, and what does not.** The structural terms — the degree correction, the shared heterogeneity, the cross-domain coupling, the interval/point/absorbing split — are the model. The domain rates, the duration densities and the death timing are estimated per database and are not claims that transfer. A production CDM will have different concept frequencies, different intervals and a different death pattern; the test is whether the same structure fits it, not whether the numbers match Synthea. The fidelity table below is therefore a unit test of the pipeline, not evidence about a health system.
 
 The released object has **17,502 numbers** (`K = 20`, 781 atoms), of which none indexes a patient: the per-patient `u_i` and `z_i` are sampled at generation from their shared distributions, not stored. For comparison, the block model's release was 2,056 numbers; the extra cost buys the intervals, the durations, the death process and the coupling.
 

@@ -19,8 +19,16 @@ never be read causally, and every place it appears says so.
 The fit reuses the tested pieces of the codebase where the object is identical
 (marginal IPF for u_i and the concept intensities; negative-binomial marginal
 for the Gamma shape; the damped-Newton factor fit for the coupling) and adds the
-temporal pieces that only this model has: per-domain calendar profiles,
-log-normal durations, a Weibull death hazard, and interval emission.
+temporal pieces: per-domain calendar profiles, an estimated duration density, an
+estimated death-timing distribution, and interval emission.
+
+What transfers between databases is the *structure* -- the degree correction,
+the shared heterogeneity, the coupling, the interval/point/absorbing split. The
+domain rates, the duration density and the death timing are estimated from
+whatever database the model is fitted to; they are nuisances, not claims, and
+must be re-estimated (with the parametric diagnostics re-run) on new data. On a
+rule-based simulator such as Synthea the duration shape is a property of the
+simulator's rules, not evidence about a health system.
 """
 
 from __future__ import annotations
@@ -240,6 +248,11 @@ def fit_durations(events: pd.DataFrame, domain: str):
     and it is still compact (~102 numbers per domain). The log-normal and
     mixture parameters are retained in the returned dict as the diagnostic
     that the parametric assumptions fail.
+
+    These quantiles are a property of the fitted database, not a claim that
+    transfers: on a rule-based simulator they reflect the simulator's rules.
+    On a production CDM re-run the diagnostic and re-estimate; do not reuse
+    the shape.
     """
     sub = events[events["domain"] == domain]
     d = (sub["end_date"] - sub["start_date"]).dt.days.to_numpy(dtype=float)
