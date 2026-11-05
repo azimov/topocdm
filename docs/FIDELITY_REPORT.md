@@ -149,6 +149,26 @@ The visit count, the events per visit, and the total records are on target. The 
 
 ---
 
+### 4.3 First fix: per-concept prevalence layer (held-out)
+
+`topocdm/hurdle.py` adds one parameter per concept, `pi_j` — the share of patients who should have at least one record — and reallocates a generated count matrix so each concept's positive-patient share matches it. Column totals are preserved, so incidence is unchanged. The layer is fitted on 80% of patients, applied to synthetic patients generated for the held-out 20%, and `pi_j` is drawn from its Beta posterior per cohort so the simulation interval reflects uncertainty in the training prevalence. It adds C parameters and no per-patient parameters.
+
+| dataset | bin | n | prevalence coverage before → after | ratio before → after |
+|---|---|---:|---|---|
+| Synthea | rare 1–3% | 157 | 50% → **59%** | 1.66 → **1.09** |
+| Synthea | mid 3–30% | 173 | 56% → **66%** | 1.23 → **1.02** |
+| Synthea | common 30–100% | 76 | 8% → **34%** | 1.23 → **1.03** |
+| MIMIC | mid 3–30% | 828 | 89% → 75% | 0.72 → 0.51 |
+| MIMIC | common 30–100% | 329 | 36% → 52% | 0.66 → 0.84 |
+
+![Held-out coverage before and after](figs/fig40_hurdle_coverage.png)
+
+**The level is fixed; the gate is not.** On Synthea the layer moves the prevalence ratio from 1.66/1.23/1.23 to 1.09/1.02/1.03 — the per-concept level bias is largely removed. Coverage improves (overall 44% → 57%; common 8% → 34%) but does not reach 80% in any bin. The remaining gap is held-out sampling noise (the test set is 400 patients, so per-concept prevalence has its own sampling error) plus the still-wrong joint assignment, which this layer does not touch.
+
+The MIMIC held-out test is 20 patients. The mid ratio worsens and overall coverage falls (74% → 69%); at that sample size the comparison is not reliable. It is reported, not interpreted.
+
+The layer is a post-generation prevalence calibration, not a joint model. It does not fix co-occurrence, refill, or the visit content; those remain the topic/refill work.
+
 ## 5. The gate
 
 Prevalence fidelity passes only when **all** of the following hold on both fixtures:
@@ -203,6 +223,7 @@ If the model or the sample changes, also update §2 (what is fitted, and on what
 |---|---|---|
 | 1 | 2026-11-05 | First version. Overall coverage: Synthea 40.6%, MIMIC 81.8%; R = 20 / 50. |
 | 2 | 2026-11-05 | Split coverage by prevalence bin; added incidence ratio, denominator, and the common-bin mechanism diagnosis. R = 50 on both. Synthea 43% overall (57/47/1 by bin), MIMIC 82% (93/81/19). |
+| 3 | 2026-11-05 | Added the per-concept prevalence layer (held-out 80/20, Beta posterior). Synthea ratios 1.66/1.23/1.23 → 1.09/1.02/1.03; coverage 44% → 57% overall, still below the 80% gate. MIMIC held-out n=20, not interpretable. |
 
 ---
 
