@@ -157,6 +157,8 @@ the Python commands are otherwise identical.
 | `scripts/setup_work_laptop.sh` | this setup |
 | `scripts/fit_databricks.py` | Databricks connection, cluster-side sampling, local fit |
 | `docs/DATABRICKS.md` | connection and sampling details |
+| `docs/WORK_ACCOUNT.md` | private mirror under the work account |
+| `scripts/push_work.sh` | guarded push to the work mirror |
 | `docs/FIDELITY_REPORT.md` | prevalence/incidence fidelity, if you run the fixture experiments |
 | `results/` | fit pickle and JSON summary |
 | `.secrets/` | local credentials, gitignored; not needed if you use env vars |
