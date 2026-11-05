@@ -73,3 +73,30 @@ Synthea's subject spectra are a long diagonal ramp from 0 to 2. The graph is sma
 The pooled-eigenvalue KS is misleading here: Synthea vs MIMIC is 0.39, MIMIC vs synthetic is 0.63, which would suggest Synthea is closer to MIMIC. It is not. Both pooled spectra are dominated by the flat region at 1, so the KS mostly measures agreement there. The tail statistics — `λ2`, `λn`, node count — are the meaningful comparison, and on those the three sources are qualitatively distinct.
 
 The practical consequence: the Synthea slice and the MIMIC slice do not share a subject-level structure, so a model fitted to one is not a guide to the other. The model fitted to MIMIC is closer in scale (82 against 104 concepts) but over-connects (`λ2` 0.36 against 0.13); that over-connection, not the node count, is what the within-visit concept layer has to fix.
+
+---
+
+## 5. Synthea fitted to itself
+
+Section 4 compared a model fitted to MIMIC against Synthea — a cross-dataset comparison. The same-dataset comparison is the one that matters here: fit topocdm to Synthea, generate from that fit, and compare the synthetic spectra with Synthea's.
+
+Per-domain model, `K = 20`, 10,000 patients, 16.8 s, 17,502 parameters. Generated 5,798,450 records against 5,755,902.
+
+![Synthea fitted to itself, examples](figs/fig35_synthea_model_spectra_examples.png)
+
+| | Synthea | synthetic (fit to Synthea) |
+|---|---:|---:|
+| patients with a subject graph | **8,631 / 10,000 (86.3%)** | **460 / 10,000 (4.6%)** |
+| concepts per graph, median | 13 | 9 |
+| `λ2`, median | 0.000 | 0.000 |
+| `λn`, median | 2.000 | 2.000 |
+| mean-spectrum L2 | — | 0.108 |
+| pooled KS | — | 0.189 |
+
+![Synthea fitted to itself, ensemble](figs/fig36_synthea_model_spectra_ensemble.png)
+
+The conditional spectra are close: both are small bipartite ramps, and the mean spectra overlap (L2 0.11). If only the 460 synthetic patients with a graph were examined, the model would look right.
+
+The failure is coverage. The per-domain generator draws events independently in time, so a patient's conditions and drugs rarely share a day. The same-day graph loses its edges, isolated nodes are dropped, and only 4.6% of synthetic patients retain a graph. The model reproduces the record count and the concept frequencies, but not the within-patient batching that makes a subject graph exist.
+
+This is the same interval failure the visit anchor fixed on MIMIC, now on topocdm's home dataset. MIMIC had `visit_occurrence_id`; Synthea has none, so the fix there is a derived encounter key (person, date) or an explicit within-patient batching process, not another concept-level coupling.
