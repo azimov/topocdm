@@ -138,4 +138,7 @@ def test_spectrum_matches_normalised_svd():
     r = M.sum(1); c = M.sum(0)
     N = M / np.sqrt(np.outer(r, c))
     s_ref = np.linalg.svd(N, compute_uv=False)
-    assert np.allclose(np.sort(s)[::-1], s_ref, atol=1e-6)
+    k = len(s_ref)
+    # the full spectrum is padded with zeros to max(n, m)
+    assert np.allclose(np.sort(s)[::-1][:k], s_ref, atol=1e-6)
+    assert np.allclose(s[k:], 0.0)

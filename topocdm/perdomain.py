@@ -781,8 +781,17 @@ def spectrum(M) -> np.ndarray:
     c = np.asarray(M.sum(0)).ravel()
     N = (sparse.diags(1 / np.sqrt(np.maximum(r, 1e-9))) @ M
          @ sparse.diags(1 / np.sqrt(np.maximum(c, 1e-9))))
-    e = np.sort(np.linalg.eigvalsh((N.T @ N).toarray()))[::-1]
-    return np.sqrt(np.maximum(e, 0))
+    n, m = N.shape
+    # use the smaller Gram matrix: the non-zero singular values are the same,
+    # and the zero padding restores the full spectrum. This matters when C is
+    # large (MIMIC has ~2,700 clinical concepts for 100 patients).
+    if n <= m:
+        G = (N @ N.T).toarray()
+    else:
+        G = (N.T @ N).toarray()
+    e = np.sort(np.linalg.eigvalsh(G))[::-1]
+    s = np.sqrt(np.maximum(e, 0))
+    return np.concatenate([s, np.zeros(max(n, m) - len(s))])
 
 
 def spectral_ks(s1: np.ndarray, s2: np.ndarray, grid: np.ndarray | None = None):

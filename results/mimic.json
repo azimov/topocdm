@@ -1,0 +1,168 @@
+{
+ "data": {
+  "patients": 100,
+  "records": 423924,
+  "per_domain": {
+   "condition": 16441,
+   "death": 15,
+   "drug": 18229,
+   "measurement": 338550,
+   "observation": 31390,
+   "procedure": 18447,
+   "visit": 852
+  }
+ },
+ "fitted": {
+  "k": 0.4990553444651554,
+  "propensity_tmean": 0.07177364259243635,
+  "death_frac": 0.15,
+  "n_parameters": 17121,
+  "K": 5,
+  "n_atoms": 2723
+ },
+ "level": {
+  "condition": {
+   "observed": 16441,
+   "generated": 17890,
+   "ratio": 1.0881333252235266
+  },
+  "drug": {
+   "observed": 18229,
+   "generated": 16500,
+   "ratio": 0.9051511328103571
+  },
+  "procedure": {
+   "observed": 18447,
+   "generated": 17085,
+   "ratio": 0.9261668563994145
+  },
+  "measurement": {
+   "observed": 338550,
+   "generated": 333243,
+   "ratio": 0.9843243243243244
+  },
+  "observation": {
+   "observed": 31390,
+   "generated": 35597,
+   "ratio": 1.1340235743867473
+  },
+  "visit": {
+   "observed": 852,
+   "generated": 698,
+   "ratio": 0.8192488262910798
+  },
+  "death": {
+   "observed": 15,
+   "generated": 16,
+   "ratio": 1.0666666666666667
+  }
+ },
+ "summary": {
+  "prevalence": {
+   "r": 0.9325042633514992,
+   "slope": 1.415304690838819,
+   "intercept": -0.012177264738448927,
+   "med_ratio": 1.0526315789473684
+  },
+  "incidence": {
+   "r": 0.9900505035535128,
+   "slope": 1.0088150409804209,
+   "intercept": 0.11286525296440895,
+   "med_ratio": 1.342882314378745
+  },
+  "degree_l1": 1.84,
+  "degree_ks": 0.5300000000000002,
+  "degree_mean": [
+   271.3,
+   215.05
+  ],
+  "degree_p99": [
+   590.07,
+   1014.3800000000002
+  ],
+  "cooccurrence_r": 0.5659989022036495,
+  "gini_events": [
+   0.543762032040533,
+   0.812700042045438
+  ],
+  "total_events": [
+   415661,
+   413838
+  ],
+  "n": [
+   100,
+   100
+  ]
+ },
+ "spectrum": {
+  "ks": 0.019152854511970574,
+  "ks_nonzero": 0.52,
+  "rank_source": 61,
+  "rank_synthetic": 20,
+  "top10_source": [
+   0.9999999999999998,
+   0.839702924202352,
+   0.5341683145686894,
+   0.47560214883969615,
+   0.44591483146220146,
+   0.3303336024109009,
+   0.30475062156156274,
+   0.29737511888291296,
+   0.2741228937932196,
+   0.26542313038607096
+  ],
+  "top10_synthetic": [
+   1.0,
+   0.3615738775109658,
+   0.30838086487288596,
+   0.2401285937228247,
+   0.22169338176792103,
+   0.20365748903292183,
+   0.17134433249472455,
+   0.1597404321157488,
+   0.15380719013017607,
+   0.1448926464848816
+  ]
+ },
+ "level_noise_floor": 0.14155514030388733,
+ "duration": {
+  "condition": {
+   "source_median": 0.0,
+   "source_zero": 0.7692354479654522
+  },
+  "drug": {
+   "source_median": 1.0,
+   "source_zero": 0.23457128750891437
+  }
+ },
+ "era": {
+  "condition": {
+   "real": {
+    "rows": 3771,
+    "median_days": 6.0
+   },
+   "built": {
+    "rows": 3771,
+    "median_days": 6.0
+   },
+   "generated": {
+    "rows": 5365,
+    "median_days": 0.0
+   }
+  },
+  "drug": {
+   "real": {
+    "rows": 7931,
+    "median_days": 4.0
+   },
+   "built": {
+    "rows": 8801,
+    "median_days": 3.0
+   },
+   "generated": {
+    "rows": 12723,
+    "median_days": 1.0
+   }
+  }
+ }
+}
