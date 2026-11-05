@@ -61,6 +61,58 @@ bash scripts/push_work.sh
 It refuses to push if the working tree is dirty or if any tracked file matches
 the data/secret patterns (`.secrets/`, `data/`, `*.pdf`, `*.pkl`, `*.env`).
 
+## If the work account is an enterprise-managed user (EMU)
+
+A username with an enterprise suffix (for example `JGilber2_JNJT`) is usually
+an enterprise-managed user. EMU accounts cannot be added as outside
+collaborators to repositories owned by personal accounts, cannot join outside
+organisations, and cannot fork outside repositories. The "share" or collaborator
+route therefore fails, and no setting on the personal repository fixes it.
+
+The mirror must live inside the work enterprise:
+
+1. Sign in as the work account and create a **private** repository `topocdm`
+   in the enterprise (under the EMU account or a work organisation). Copy its
+   URL.
+2. On the personal machine, authenticate as the work account for that remote.
+   SSH is the cleanest:
+
+   ```bash
+   ssh-keygen -t ed25519 -f ~/.ssh/id_ed25519_work -C "work laptop"
+   # add ~/.ssh/id_ed25519_work.pub to the work account's SSH keys
+   ```
+
+   Add a host alias to `~/.ssh/config`:
+
+   ```
+   Host github-work
+     HostName github.com
+     User git
+     IdentityFile ~/.ssh/id_ed25519_work
+     IdentitiesOnly yes
+   ```
+
+   Then add the remote through the alias:
+
+   ```bash
+   git remote add work git@github-work:<owner>/topocdm.git
+   ```
+
+   A work PAT with `contents: write` and a credential helper also works. Do
+   not put the token in the remote URL or in the repository.
+
+3. Push from the personal machine:
+
+   ```bash
+   git push work main
+   # or: bash scripts/push_work.sh
+   ```
+
+The personal machine is pushing into the enterprise; the EMU account does not
+need access to the personal repository. If the enterprise blocks pushes from
+personal devices, run the same push from the work laptop after cloning the
+work repository there.
+
 ## Rules
 
 - **Neither repository is public.** The work mirror exists so the scanner can
