@@ -6,6 +6,8 @@
 
 ## 0. What the object is, and what it is not
 
+> **Correction.** The condition–drug graph used in sections 1–5 is a *derived diagnostic*, not the subject spectrum as originally specified. The full object uses every clinical concept a patient has; it is computed in section 6. The restriction was made silently, which was wrong.
+
 Nodes are the **condition and drug concepts** a patient has. An edge means two concepts were recorded on the same day; edge weight is the number of days they co-occur. The normalised Laplacian is `L = I - D^{-1/2} A D^{-1/2}`; its sorted eigenvalues are the patient's fingerprint.
 
 Why not all concepts? The all-concept graph is near-complete: one ICU visit can carry hundreds of measurements, so every concept is connected to every other, and the Laplacian spectrum collapses to a flat line at 1 with a spike at the ends. It looks identical for real and synthetic patients because it is the spectrum of a complete graph, not of the data. The condition–drug graph is sparse enough to have structure.
@@ -100,3 +102,30 @@ The conditional spectra are close: both are small bipartite ramps, and the mean 
 The failure is coverage. The per-domain generator draws events independently in time, so a patient's conditions and drugs rarely share a day. The same-day graph loses its edges, isolated nodes are dropped, and only 4.6% of synthetic patients retain a graph. The model reproduces the record count and the concept frequencies, but not the within-patient batching that makes a subject graph exist.
 
 This is the same interval failure the visit anchor fixed on MIMIC, now on topocdm's home dataset. MIMIC had `visit_occurrence_id`; Synthea has none, so the fix there is a derived encounter key (person, date) or an explicit within-patient batching process, not another concept-level coupling.
+
+
+---
+
+## 6. All clinical concepts (the object as originally specified)
+
+The full subject spectrum uses every clinical concept a patient has — condition, drug, measurement, observation, procedure — with the same same-day edge rule. It was computed for both datasets, real against a model fitted to the same dataset.
+
+![MIMIC all-concept spectra](figs/fig37_mimic_all_subject_spectra.png)
+
+![Synthea all-concept spectra](figs/fig37_synthea_all_subject_spectra.png)
+
+| | MIMIC observed | MIMIC synthetic | Synthea observed | Synthea synthetic |
+|---|---:|---:|---:|---:|
+| patients with a graph | 100 | 100 | 9,999 | 6,817 |
+| concepts per graph, median | 250.5 | 191.5 | 74.0 | 21.0 |
+| `λ2`, median | 0.408 | 0.524 | 0.000 | 0.000 |
+| `λn`, median | 1.083 | 1.027 | 2.000 | 2.000 |
+| fraction of eigenvalues within 0.1 of 1 | 0.967 | 0.985 | 0.827 | 0.143 |
+
+![All-concept ensemble](figs/fig38_all_subject_spectra_ensemble.png)
+
+On MIMIC the all-concept graph is near-complete: 96.7% of the observed patient's eigenvalues and 98.5% of the synthetic patient's are within 0.1 of 1. The spectrum is almost a flat line at 1; the differences are confined to the tails (`λ2`, `λn`). That is why the condition–drug subset was used — but it should have been labelled as a derived diagnostic, not substituted for the requested object.
+
+On Synthea the all-concept graph is not degenerate. The observed patient has 74 concepts and 82.7% of eigenvalues near 1, with a high tail; the synthetic patient has 21 concepts and only 14.3% near 1, a sparse bipartite ramp. The model fails here much more clearly than in the condition–drug view: it does not reproduce the all-concept same-day graph.
+
+The honest summary: the all-concept spectrum is the requested object. On MIMIC it is dominated by completeness and is a weak diagnostic; on Synthea it is informative and shows a large failure. A spectrum that is discriminative on both would need a different graph construction — cross-visit co-occurrence, or a thresholded graph — which is a modelling choice to agree, not to make silently.
