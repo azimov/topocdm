@@ -46,6 +46,11 @@ plt.rcParams.update({"figure.dpi": 160, "font.size": 9,
                      "grid.linewidth": 0.5})
 C = dict(real="#1f2933", syn="#2C6E9B", band="#2C6E9B", bad="#B4443C")
 
+# Prevalence bins for the gate: a single scalar hides where the model fails.
+BINS = [("rare_1_3", 0.01, 0.03),
+        ("mid_3_30", 0.03, 0.30),
+        ("common_30_100", 0.30, 1.0001)]
+
 
 def _load_m21():
     path = os.path.join(os.path.dirname(__file__), "21_subject_spectra.py")
@@ -96,9 +101,6 @@ def _marginals(X, T):
 def _run_dataset(name, events, periods, visits, R, out_prefix):
     t0 = time.time()
     fit = va.fit_visitanchor(events, periods, visits)
-    src_drug = events[events["domain"] == "drug"][
-        ["person_id", "concept_id", "start_date", "end_date"]]
-    rf = refill.fit_refill(src_drug)
 
     X_real, concept_ids, persons, T_real = pdm.clinical_incidence(events, periods)
     prev_real, inc_real = _marginals(X_real, T_real)
@@ -108,8 +110,9 @@ def _run_dataset(name, events, periods, visits, R, out_prefix):
         rng = np.random.default_rng(1000 + r)
         sp = pdm.sample_periods(periods, len(periods), rng)
         tab = va.generate_visitanchor(fit, sp, seed=2000 + r)
-        tab["drug_exposure"] = refill.apply_refill(
-            tab["drug_exposure"], rf, sp, np.random.default_rng(3000 + r))
+        # Refill re-dates drug records but preserves their count, so it cannot
+        # change prevalence or incidence. It is tested separately; omitted here
+        # to keep the R=50 fidelity run tractable.
         rec = pdm.tables_to_records(tab)
         X = _matrix_for(rec, sp, concept_ids)
         T = np.maximum((sp["end_date"] - sp["start_date"]).dt.days.to_numpy(float)
@@ -129,8 +132,31 @@ def _run_dataset(name, events, periods, visits, R, out_prefix):
     o = order[keep[order]]
     cover_p = float(np.mean((prev_real[o] >= plo[o]) & (prev_real[o] <= phi[o])))
     cover_i = float(np.mean((inc_real[o] >= ilo[o]) & (inc_real[o] <= ihi[o])))
+    bins = {}
+    for bname, blo, bhi in BINS:
+        m = (prev_real >= blo) & (prev_real < bhi)
+        if m.sum() == 0:
+            continue
+        ip = (prev_real[m] >= plo[m]) & (prev_real[m] <= phi[m])
+        ii = (inc_real[m] >= ilo[m]) & (inc_real[m] <= ihi[m])
+        bins[bname] = dict(
+            n=int(m.sum()),
+            prevalence_coverage=float(ip.mean()),
+            incidence_coverage=float(ii.mean()),
+            prevalence_ratio_median=float(np.median(pmid[m] / np.maximum(prev_real[m], 1e-12))),
+            incidence_ratio_median=float(np.median(imid[m] / np.maximum(inc_real[m], 1e-12))),
+            prevalence_over=int(((pmid[m] > prev_real[m]) & ~ip).sum()),
+            prevalence_under=int(((pmid[m] < prev_real[m]) & ~ip).sum()),
+        )
+    inc_ratio_median = float(np.median(imid[o] / np.maximum(inc_real[o], 1e-12)))
     print(f"{name}: {R} cohorts in {time.time() - t0:.1f}s; "
-          f"prevalence coverage {cover_p:.0%}, incidence coverage {cover_i:.0%}")
+          f"coverage overall P {cover_p:.0%} / I {cover_i:.0%}; "
+          f"incidence ratio median {inc_ratio_median:.2f}")
+    for bname, b in bins.items():
+        print(f"    {bname:14s} n={b['n']:4d} P cov {b['prevalence_coverage']:.0%} "
+              f"(over {b['prevalence_over']}, under {b['prevalence_under']}) "
+              f"P ratio {b['prevalence_ratio_median']:.2f} "
+              f"I ratio {b['incidence_ratio_median']:.2f}")
 
     fig, axes = plt.subplots(2, 2, figsize=(9.6, 6.0))
     x = np.arange(len(o)) + 1
@@ -184,6 +210,8 @@ def _run_dataset(name, events, periods, visits, R, out_prefix):
 
     return dict(R=R, n_concepts=int(len(concept_ids)),
                 n_compared=int(len(o)),
+                bins=bins,
+                incidence_ratio_median=inc_ratio_median,
                 prevalence_coverage=cover_p,
                 incidence_coverage=cover_i,
                 prevalence_real=prev_real.tolist(),
@@ -207,7 +235,7 @@ def main():
     pe_s = pe[pe.person_id.isin(keep)].copy()
     ev_s, enc_s = derive_encounters(ev_s)
     out["synthea"] = _run_dataset("Synthea (2k sample)", ev_s, pe_s, enc_s,
-                                  R=20, out_prefix="fig39_synthea_fidelity")
+                                  R=50, out_prefix="fig39_synthea_fidelity")
 
     # ---- MIMIC demo ----
     m21 = _load_m21()
