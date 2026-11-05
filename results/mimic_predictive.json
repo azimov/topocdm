@@ -1,0 +1,264 @@
+{
+ "R": 50,
+ "real": {
+  "events_condition": 16441,
+  "events_drug": 18229,
+  "events_procedure": 18447,
+  "events_measurement": 338550,
+  "events_observation": 31390,
+  "events_visit": 852,
+  "gap_zero": 0.9937780776926272,
+  "merge_condition": 0.932339703386704,
+  "merge_drug": 0.8159268929503917,
+  "condition_era_rows": 3771,
+  "drug_era_rows": 7931,
+  "degree_mean": 271.3,
+  "prev_mean": 0.09992633517495399,
+  "prev_sd": 0.20668120777012314,
+  "rank": 61
+ },
+ "per_domain": {
+  "events_condition": {
+   "real": 16441.0,
+   "median": 15347.0,
+   "lo": 11003.55,
+   "hi": 21276.25,
+   "pct": 0.64,
+   "inside": true
+  },
+  "events_drug": {
+   "real": 18229.0,
+   "median": 17308.0,
+   "lo": 12100.9,
+   "hi": 24162.199999999997,
+   "pct": 0.58,
+   "inside": true
+  },
+  "events_procedure": {
+   "real": 18447.0,
+   "median": 16741.5,
+   "lo": 11807.0,
+   "hi": 25314.899999999998,
+   "pct": 0.66,
+   "inside": true
+  },
+  "events_measurement": {
+   "real": 338550.0,
+   "median": 312789.5,
+   "lo": 239533.1,
+   "hi": 430562.99999999994,
+   "pct": 0.64,
+   "inside": true
+  },
+  "events_observation": {
+   "real": 31390.0,
+   "median": 29225.0,
+   "lo": 21245.5,
+   "hi": 42279.299999999996,
+   "pct": 0.64,
+   "inside": true
+  },
+  "events_visit": {
+   "real": 852.0,
+   "median": 784.5,
+   "lo": 534.5,
+   "hi": 1245.5,
+   "pct": 0.6,
+   "inside": true
+  },
+  "gap_zero": {
+   "real": 0.9937780776926272,
+   "median": 0.8884889925116051,
+   "lo": 0.8626177226135835,
+   "hi": 0.9132846911134801,
+   "pct": 1.0,
+   "inside": false
+  },
+  "merge_condition": {
+   "real": 0.932339703386704,
+   "median": 0.8063382514965229,
+   "lo": 0.7644625708686258,
+   "hi": 0.8323305507925606,
+   "pct": 1.0,
+   "inside": false
+  },
+  "merge_drug": {
+   "real": 0.8159268929503917,
+   "median": 0.3396482359680826,
+   "lo": 0.26251877750736813,
+   "hi": 0.4460420189816937,
+   "pct": 1.0,
+   "inside": false
+  },
+  "condition_era_rows": {
+   "real": 3771.0,
+   "median": 4950.0,
+   "lo": 3603.05,
+   "hi": 6383.4,
+   "pct": 0.08,
+   "inside": true
+  },
+  "drug_era_rows": {
+   "real": 7931.0,
+   "median": 12694.0,
+   "lo": 9562.2,
+   "hi": 17175.149999999994,
+   "pct": 0.02,
+   "inside": false
+  },
+  "degree_mean": {
+   "real": 271.3,
+   "median": 203.08999999999997,
+   "lo": 161.2655,
+   "hi": 250.49699999999999,
+   "pct": 1.0,
+   "inside": false
+  },
+  "prev_mean": {
+   "real": 0.09992633517495399,
+   "median": 0.07480294659300185,
+   "lo": 0.05939797421731125,
+   "hi": 0.09226408839779009,
+   "pct": 1.0,
+   "inside": false
+  },
+  "prev_sd": {
+   "real": 0.20668120777012314,
+   "median": 0.1336374240361094,
+   "lo": 0.11153036585599409,
+   "hi": 0.15219634513921837,
+   "pct": 1.0,
+   "inside": false
+  },
+  "rank": {
+   "real": 61.0,
+   "median": 20.5,
+   "lo": 14.45,
+   "hi": 29.0,
+   "pct": 1.0,
+   "inside": false
+  }
+ },
+ "visit_anchor": {
+  "events_condition": {
+   "real": 16441.0,
+   "median": 16899.0,
+   "lo": 11653.1,
+   "hi": 22732.199999999997,
+   "pct": 0.44,
+   "inside": true
+  },
+  "events_drug": {
+   "real": 18229.0,
+   "median": 17840.5,
+   "lo": 14567.45,
+   "hi": 22700.05,
+   "pct": 0.54,
+   "inside": true
+  },
+  "events_procedure": {
+   "real": 18447.0,
+   "median": 18591.5,
+   "lo": 12516.3,
+   "hi": 25137.949999999997,
+   "pct": 0.48,
+   "inside": true
+  },
+  "events_measurement": {
+   "real": 338550.0,
+   "median": 330617.5,
+   "lo": 249344.25,
+   "hi": 434807.74999999994,
+   "pct": 0.56,
+   "inside": true
+  },
+  "events_observation": {
+   "real": 31390.0,
+   "median": 30707.5,
+   "lo": 20675.0,
+   "hi": 38722.25,
+   "pct": 0.54,
+   "inside": true
+  },
+  "events_visit": {
+   "real": 852.0,
+   "median": 846.5,
+   "lo": 674.8,
+   "hi": 1064.5,
+   "pct": 0.5,
+   "inside": true
+  },
+  "gap_zero": {
+   "real": 0.9937780776926272,
+   "median": 0.9987700368784689,
+   "lo": 0.9984759590598671,
+   "hi": 0.9991514570381756,
+   "pct": 0.0,
+   "inside": false
+  },
+  "merge_condition": {
+   "real": 0.932339703386704,
+   "median": 0.9613509419248922,
+   "lo": 0.9341546694664119,
+   "hi": 0.9789014812640457,
+   "pct": 0.04,
+   "inside": false
+  },
+  "merge_drug": {
+   "real": 0.8159268929503917,
+   "median": 0.8106551175391873,
+   "lo": 0.7058541772864177,
+   "hi": 0.904144956669968,
+   "pct": 0.52,
+   "inside": true
+  },
+  "condition_era_rows": {
+   "real": 3771.0,
+   "median": 3911.5,
+   "lo": 2828.2,
+   "hi": 4800.2,
+   "pct": 0.44,
+   "inside": true
+  },
+  "drug_era_rows": {
+   "real": 7931.0,
+   "median": 9398.0,
+   "lo": 7473.6,
+   "hi": 11453.9,
+   "pct": 0.12,
+   "inside": true
+  },
+  "degree_mean": {
+   "real": 271.3,
+   "median": 270.79499999999996,
+   "lo": 242.52349999999998,
+   "hi": 305.5755,
+   "pct": 0.52,
+   "inside": true
+  },
+  "prev_mean": {
+   "real": 0.09992633517495399,
+   "median": 0.09974033149171274,
+   "lo": 0.08932725598526707,
+   "hi": 0.11255082872928181,
+   "pct": 0.52,
+   "inside": true
+  },
+  "prev_sd": {
+   "real": 0.20668120777012314,
+   "median": 0.16312975891911957,
+   "lo": 0.15355684281115156,
+   "hi": 0.17856467020677483,
+   "pct": 1.0,
+   "inside": false
+  },
+  "rank": {
+   "real": 61.0,
+   "median": 37.0,
+   "lo": 26.0,
+   "hi": 45.0,
+   "pct": 1.0,
+   "inside": false
+  }
+ }
+}

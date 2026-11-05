@@ -673,8 +673,18 @@ def generate_cohort(fit: PerDomainFit, n: int, periods: pd.DataFrame | None = No
         keep = np.isnat(dd) | (start_ns <= dd)
         events = events[keep].copy()
 
+    return tables_from_events(events, periods, death)
+
+
+def tables_from_events(events: pd.DataFrame, periods: pd.DataFrame,
+                       death: pd.DataFrame) -> dict:
+    """Build the OMOP domain, era and death tables from a dated event frame.
+
+    Shared by the per-domain and visit-anchored generators: both produce the
+    same (person_id, domain, concept_id, start_date, end_date) frame, and the
+    table/era construction is identical.
+    """
     tables = {}
-    # domain tables
     field = {
         "condition": ("condition_occurrence", "condition_concept_id",
                       "condition_start_date", "condition_end_date"),

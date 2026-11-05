@@ -101,14 +101,16 @@ topocdm/
   visits.py       VisitModel, PresenceModel, assign_with_presence
   factors.py      FactorFit, fit_factors  [rank-K interaction, damped Newton]
   visitmodel.py   VisitTopicModel, fit_topics (PLSA/EM), fit_transitions, simulate_visits
-  perdomain.py    NEW: per-domain temporal model (MODEL_V2 §2); fit/generate, era builder,
+  perdomain.py    per-domain temporal model (MODEL_V2 §2); fit/generate, era builder,
                   spectrum; sample-scalable (max_patients, sparse IPF)
+  visitanchor.py  NEW: visit-anchored interval model (MIMIC has visit IDs; Synthea does not)
   fast.py + _fast.c  CSR mixture likelihood via ctypes, 21x faster
   cohort_incidence.py, io.py
 scripts/extract_dated.sh  events with end dates -> data/events_full.csv
 scripts/fit_databricks.py  T-SQL -> Spark SQL (circepy SQLRender) via the Databricks connector
-experiments/01..16  earlier analyses; 17_perdomain.py, 18_negative_control.py, 19_mimic.py
-tests/test_model.py (15) + tests/test_perdomain.py (7), 22 passing
+experiments/01..16  earlier analyses; 17_perdomain.py, 18_negative_control.py,
+                    19_mimic.py, 20_mimic_visitanchor.py
+tests/test_model.py (15) + tests/test_perdomain.py (7) + tests/test_visitanchor.py (3), 25 passing
 figs/, results/
 docs/MODEL_V2.md, docs/RESULTS_PERDOMAIN.md, docs/MIMIC_RUN.md,
 docs/DATABRICKS.md, WHERE_THIS_STANDS.md, BRIEFING.md, MODEL_AND_READING.md
@@ -168,6 +170,8 @@ The four items that were open are done; the results are in `docs/RESULTS_PERDOMA
 **Kill criterion:** not triggered as literally stated (contact adjustment does move the all-ages association, 1.46 → 1.05), but the contribution is not established because age adjustment does the same (1.06). The decisive next test is a production CDM and age-matched controls. See `docs/RESULTS_PERDOMAIN.md` §6.
 
 **Scalability:** `fit_perdomain(..., max_patients=...)` fits a sample; the marginal fit is sparse IPF and the coupling uses at most `max_factor_patients`. 2,000 patients in 2.8 s, 10,000 in 10.3 s, parameters stable.
+
+**Intervals (MIMIC):** 99.4% of consecutive events are same-day and visit IDs are 100% populated, so the per-domain model's independent starts are the wrong object. `visitanchor.py` (visit = encounter, events batched inside it) fixes the interval-driven failures in a 50-cohort predictive check: drug-era over-count 1.60x -> 1.18x (inside the 5-95% interval), degree 203 -> 271 against 271, condition eras inside. The remaining miss is effective rank (37 against 61): that is within-visit concept co-occurrence, not timing, and is the next model. See `docs/MIMIC_INTERVALS.md`.
 
 ---
 

@@ -41,6 +41,8 @@ from topocdm.visits import VisitModel, fit_visit_model, assign_to_visits
 from topocdm.factors import FactorFit, fit_factors
 from topocdm.visitmodel import (VisitTopicModel, fit_topics, fit_transitions,
                                 simulate_visits, simulate_topic_counts)
+from topocdm.visitanchor import (VisitAnchorFit, fit_visitanchor,
+                                 generate_visitanchor)
 from topocdm.distributed import (partition_stats, merge as merge_stats,
                                  m_step, fit_partitioned, Stats)
 from topocdm.temporal import (TemporalProfile, fit_temporal, sample_periods,
@@ -72,6 +74,7 @@ __all__ = [
     "FactorFit", "fit_factors",
     "VisitTopicModel", "fit_topics", "fit_transitions", "simulate_visits",
     "simulate_topic_counts",
+    "VisitAnchorFit", "fit_visitanchor", "generate_visitanchor",
     "partition_stats", "merge_stats", "m_step", "fit_partitioned", "Stats",
     "TemporalProfile", "fit_temporal", "sample_periods", "generate_dated",
     "year_exposure", "cohort_incidence", "poisson_ci", "predictive_ci",
