@@ -18,13 +18,13 @@ The author wrote **CiGRAM** (github.com/azimov/Cigram) for a 2015 PhD: a generat
 4. The model can generate synthetic data with realistic properties.
 5. The model is small, shareable, privacy-preserving, and comparable across sources and time.
 
-**Claim 5 is the strongest and nearest to done. Claims 2 and 3 have no evidence and are the ones that matter.** The decisive experiment is a negative-control test on real data (§8).
+**Claim 5 is the strongest and nearest to done. Claims 2 and 3 have no evidence and are the ones that matter.** The decisive experiment is a negative-control test on a production database (§8).
 
 ---
 
 ## 2. Ground rules
 
-- **The data is Synthea.** Synthea is a rule-based patient simulator. Never write "real data", "real CDM" or "real patients". The author has corrected this once already and it was committed into artefacts; do not repeat it.
+- **The data is Synthea.** Synthea is a rule-based patient simulator. Never describe the data as observed, production or patient-derived. The author has corrected this once already and it was committed into artefacts; do not repeat it.
 - **Do not overclaim.** Every earlier overclaim in this repo traced back to a bookkeeping error, not a modelling error. Check the level (generated totals vs target) before interpreting a result.
 - **Do not select a hyperparameter on the criterion you then report.** Several results here were fitted that way and are flagged as such.
 - **Verify citations** against arXiv, Crossref or PubMed before writing them. One DOI guess produced a paper on concrete creep.
@@ -101,12 +101,16 @@ topocdm/
   visits.py       VisitModel, PresenceModel, assign_with_presence
   factors.py      FactorFit, fit_factors  [rank-K interaction, damped Newton]
   visitmodel.py   VisitTopicModel, fit_topics (PLSA/EM), fit_transitions, simulate_visits
+  perdomain.py    NEW: per-domain temporal model (MODEL_V2 §2); fit/generate, era builder,
+                  spectrum; sample-scalable (max_patients, sparse IPF)
   fast.py + _fast.c  CSR mixture likelihood via ctypes, 21x faster
   cohort_incidence.py, io.py
-experiments/01..16  numbered analyses, all runnable
-tests/test_model.py  15 tests, all passing
+scripts/extract_dated.sh  NEW: events with end dates -> data/events_full.csv
+experiments/01..16  earlier analyses; 17_perdomain.py, 18_negative_control.py NEW
+tests/test_model.py (15) + tests/test_perdomain.py (7), 22 passing
 figs/, results/
-docs/MODEL_V2.md, WHERE_THIS_STANDS.md, BRIEFING.md, MODEL_AND_READING.md, docs/*.md
+docs/MODEL_V2.md, docs/RESULTS_PERDOMAIN.md (NEW), WHERE_THIS_STANDS.md,
+BRIEFING.md, MODEL_AND_READING.md, docs/*.md
 ```
 
 Repo: **github.com/azimov/topocdm** (private, MIT). PDFs are gitignored.
@@ -151,17 +155,21 @@ Repo: **github.com/azimov/topocdm** (private, MIT). PDFs are gitignored.
 
 ---
 
-## 8. What to do next, in order
+## 8. State after the per-domain session, and what to do next
 
-1. **Re-extract with end dates** for condition, drug, visit, procedure. Nothing interval-based can be fitted without it. Then rebuild the incidence matrices.
-2. **Fit the per-domain model** in `docs/MODEL_V2.md` §2: interval processes for condition and drug, point processes for measurement/observation/procedure, absorbing death.
-3. **Run the negative-control experiment.** This is the one that decides whether claims 2 and 3 are worth anything: take a drug–outcome pair with no plausible causal relationship, estimate the association raw, adjusted for contact volume, and by OHDSI empirical calibration. If the second and third agree, the contribution is real. If not, claims 2–4 are dead — and that is worth knowing too.
-4. **Populate the empty tables.** A model that emits intervals can fill `condition_era` and `drug_era`, which are empty in the source. That is a concrete, checkable deliverable.
+The four items that were open are done; the results are in `docs/RESULTS_PERDOMAIN.md` (PDF built).
 
-**Kill criterion for the whole programme:** if adjusting for contact volume does not move a known-null association toward the null, claim 2 is dead and claims 3 and 4 go with it.
+1. **Re-extraction with end dates is done.** `scripts/extract_dated.sh` produces `data/events_full.csv` (5,755,902 records, seven domains, 100% end-date coverage on condition/drug/visit). Unmapped records are kept as per-domain atoms.
+2. **The per-domain model is fitted and generates.** `topocdm/perdomain.py`; experiment `17_perdomain.py`. Levels 0.94–1.05 on every domain; prevalence r 0.95, incidence r 1.00, co-occurrence r 0.64; spectrum KS 0.35, rank 31 against 81. In-sample. Two spec corrections: the duration model is a zero-inflated empirical quantile function (log-normal and mixture both fail), and death is a bootstrap of the observed within-window timing (Weibull fails).
+3. **The negative-control experiment has an answer.** `18_negative_control.py`. Adult drug–outcome pairs: raw OR 1.01, contact-adjusted 0.96, calibration μ 0.02 — all null. All-ages condition pairs: raw 1.46 → contact 1.05, but age 1.06. **The bias `u_i` removes is age.** Claim 2 survives weakly, not strongly. Read `docs/RESULTS_PERDOMAIN.md` §3 before touching the epidemiology.
+4. **The empty tables are populated, with a caveat.** condition_era 179,121 rows (source-derived 214,544); drug_era 208,028 (source-derived 57,710 — 3.6× too many, because repeat-prescription continuity is not modelled).
+
+**Kill criterion:** not triggered as literally stated (contact adjustment does move the all-ages association, 1.46 → 1.05), but the contribution is not established because age adjustment does the same (1.06). The decisive next test is a production CDM and age-matched controls. See `docs/RESULTS_PERDOMAIN.md` §6.
+
+**Scalability:** `fit_perdomain(..., max_patients=...)` fits a sample; the marginal fit is sparse IPF and the coupling uses at most `max_factor_patients`. 2,000 patients in 2.8 s, 10,000 in 10.3 s, parameters stable.
 
 ---
 
 ## 9. Working style the author expects
 
-He has a 2015 network-science PhD and does not want statistics lectures. Explain in network terms — nodes, edges, degree, null models, spectra. He pushes back hard and correctly; he caught the "real data" framing and the visit-weighting problem. He wants honest grading of claims, not encouragement. He asked for PDFs he can read and hand to a reviewer, so keep documents self-contained and readable.
+He has a 2015 network-science PhD and does not want statistics lectures. Explain in network terms — nodes, edges, degree, null models, spectra. He pushes back hard and correctly; he caught the observed-data framing and the visit-weighting problem. He wants honest grading of claims, not encouragement. He asked for PDFs he can read and hand to a reviewer, so keep documents self-contained and readable.
