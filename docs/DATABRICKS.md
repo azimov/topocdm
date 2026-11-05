@@ -54,15 +54,45 @@ python scripts/fit_databricks.py --cdm main.omop --sample-pct 20 --max-patients 
 Outputs `results/databricks_fit.pkl` (the `PerDomainFit`) and
 `results/databricks_fit.json` (summary).
 
+## Sampling a large CDM
+
+For a large CDM, do not pull the event tables to the machine. `--n-patients`
+selects a fixed-size patient sample **on the cluster**, joins every domain
+table to it there, and downloads only the sampled rows.
+
+```bash
+python scripts/fit_databricks.py --cdm main.omop --n-patients 10000 --k 20
+```
+
+The sample is `order by hash(person_id, seed) limit n`: deterministic for a
+given `--seed` and **nested**, so the 10k patients are a subset of the 20k.
+Start at 10k, then 20k, 50k with the same seed; the smaller runs are always
+subsets of the larger, which makes the increase comparable and auditable.
+
+The cost is one sort of the person table. The event tables are filtered by the
+join and are not downloaded whole. `--dry-run --n-patients 10000` prints the
+exact Spark SQL — the `with keep as materialized (...)` CTE and the
+`join keep using (person_id)` in every union branch — without connecting.
+
+Programmatic use:
+
+```python
+from scripts.fit_databricks import connect, sample_cdm
+conn = connect(args)
+events, periods = sample_cdm(conn, n_patients=10000, cdm="main.omop", seed=0)
+```
+
+`sample_cdm` returns the same `(events, periods)` frames the fit expects.
+
 ## Notes
 
-- **`--sample-pct` is a SQL filter on the translated query**:
-  `pmod(hash(person_id), 100) < pct`. It is deterministic, so the same patients
-  appear in every domain table. It is Spark SQL by construction, applied after
-  translation.
-- **`--max-patients`** is the second, local cap passed to `fit_perdomain`; it
-  applies after the data have been pulled, so use `--sample-pct` for the
-  network cost and `--max-patients` for the fit cost.
+- **`--n-patients`** is the preferred sample for a large CDM: exact, nested,
+  and executed entirely on the cluster. `--sample-pct` remains for a percentage
+  filter (`pmod(hash(person_id), 100) < pct`); it is approximate and not nested
+  across percentages. Do not combine the two.
+- **`--max-patients`** is a second, local cap passed to `fit_perdomain`; it
+  applies after the sample has been pulled, so it does not reduce the download.
+  With `--n-patients` it is redundant unless set lower.
 - **The fit runs locally** on the pulled data, not on the cluster. For a
   production database, the extraction is the expensive step; the fit is
   seconds to minutes (see `docs/RESULTS_PERDOMAIN.md` §5).

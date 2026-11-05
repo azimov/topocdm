@@ -7,7 +7,7 @@ to Spark SQL with circepy's SQLRender port, and sent through the official
 Databricks SQL connector. There is no ibis in this path.
 
     pip install "ohdsi-circepy @ git+https://github.com/OHDSI/circepy.git@feature/decomposable-cohorts"
-    pip install databricks-sql-connector
+    pip install "databricks-sql-connector[pyarrow]"
 
 Credentials come from the environment (the standard Databricks names):
 
@@ -15,15 +15,27 @@ Credentials come from the environment (the standard Databricks names):
     DATABRICKS_HTTP_PATH         e.g. /sql/1.0/warehouses/abcdef123456
     DATABRICKS_TOKEN             a personal access token
 
+Sampling. For a large CDM the data must stay on the cluster. `--n-patients`
+selects a fixed-size patient sample **on the cluster**, joins the event tables
+to it there, and downloads only those patients' rows:
+
+    python scripts/fit_databricks.py --cdm main.omop --n-patients 10000 --k 20
+
+The sample is ordered by a hash of `person_id`, so it is deterministic for a
+given `--seed` and **nested**: the 10k patients are a subset of the 20k. That
+makes a gradual increase (10k -> 20k -> 50k) comparable and cheap to audit.
+The one cost is a sort of the person table; the event tables are filtered by
+the join, not downloaded whole.
+
+`--sample-pct` remains available for a percentage sample; do not combine it
+with `--n-patients`. `--max-patients` is a local cap passed to the fit after
+download.
+
 Usage:
 
-    python scripts/fit_databricks.py --cdm main.omop --k 20
-    python scripts/fit_databricks.py --cdm main.omop --sample-pct 20 --max-patients 20000
-    python scripts/fit_databricks.py --dry-run          # translate and print SQL, no connection
-
-`--sample-pct` wraps the *translated* Spark SQL in a deterministic patient
-filter (pmod(hash(person_id), 100) < pct), so the same patients appear in every
-domain table. `--max-patients` is a second, local cap passed to the fit.
+    python scripts/fit_databricks.py --cdm main.omop --dry-run
+    python scripts/fit_databricks.py --cdm main.omop --n-patients 10000 --k 20
+    python scripts/fit_databricks.py --cdm main.omop --n-patients 20000 --k 20
 
 The output is a pickled `PerDomainFit` plus a JSON summary. The fit itself is
 `topocdm.perdomain.fit_perdomain`; nothing about the model is reimplemented
@@ -48,57 +60,84 @@ from topocdm import perdomain as pdm
 
 
 # --------------------------------------------------------------------------
-# OHDSI SQL in T-SQL. The same extraction as scripts/extract_dated.sh, with
-# T-SQL casts so SQLRender can translate it to Spark.
+# OHDSI SQL in T-SQL. {keep} is the optional sampled-patient CTE and {join}
+# is the semi-join against it. For a full extract both are empty strings.
 # --------------------------------------------------------------------------
 
 EXTRACT_EVENTS = """
+{keep}
 select person_id, 'condition' as domain, condition_concept_id as concept_id,
        cast(condition_start_date as date) as start_date,
        cast(condition_end_date as date) as end_date
-  from {cdm}.condition_occurrence
+  from {cdm}.condition_occurrence {join}
 union all
 select person_id, 'drug', drug_concept_id,
        cast(drug_exposure_start_date as date),
        cast(drug_exposure_end_date as date)
-  from {cdm}.drug_exposure
+  from {cdm}.drug_exposure {join}
 union all
 select person_id, 'visit', visit_concept_id,
        cast(visit_start_date as date),
        cast(visit_end_date as date)
-  from {cdm}.visit_occurrence
+  from {cdm}.visit_occurrence {join}
 union all
 select person_id, 'procedure', procedure_concept_id,
        cast(procedure_date as date),
        cast(null as date)
-  from {cdm}.procedure_occurrence
+  from {cdm}.procedure_occurrence {join}
 union all
 select person_id, 'measurement', measurement_concept_id,
        cast(measurement_date as date),
        cast(null as date)
-  from {cdm}.measurement
+  from {cdm}.measurement {join}
 union all
 select person_id, 'observation', observation_concept_id,
        cast(observation_date as date),
        cast(null as date)
-  from {cdm}.observation
+  from {cdm}.observation {join}
 union all
 select person_id, 'death', 0,
        cast(death_date as date),
        cast(null as date)
-  from {cdm}.death
+  from {cdm}.death {join}
 """
 
 EXTRACT_PERIODS = """
+{keep}
 select person_id,
        cast(observation_period_start_date as date) as start_date,
        cast(observation_period_end_date as date) as end_date
-  from {cdm}.observation_period
+  from {cdm}.observation_period {join}
 """
 
 
+def keep_clause(cdm: str, n_patients: int, seed: int = 0):
+    """CTE and semi-join for a deterministic, nested patient sample."""
+    keep = (f"with keep as materialized (\n"
+            f"  select person_id from {cdm}.person\n"
+            f"  order by hash(person_id, {int(seed)})\n"
+            f"  limit {int(n_patients)}\n"
+            f")")
+    join = "join keep using (person_id)"
+    return keep, join
+
+
+def build_extract_sql(cdm: str, n_patients: int | None = None,
+                      seed: int = 0):
+    """Return (events_sql, periods_sql) in T-SQL, before translation."""
+    if n_patients is not None:
+        if n_patients <= 0:
+            raise ValueError("n_patients must be positive")
+        keep, join = keep_clause(cdm, n_patients, seed)
+    else:
+        keep, join = "", ""
+    events = EXTRACT_EVENTS.format(cdm=cdm, keep=keep, join=join)
+    periods = EXTRACT_PERIODS.format(cdm=cdm, keep=keep, join=join)
+    return events, periods
+
+
 def to_spark(tsql: str, sample_pct: int | None = None) -> str:
-    """Translate T-SQL to Spark SQL and optionally add the patient sample."""
+    """Translate T-SQL to Spark SQL and optionally add the percentage sample."""
     try:
         from circe.sqlrender import translate
     except ImportError as exc:  # pragma: no cover - environment guard
@@ -148,6 +187,21 @@ def fetch(conn, spark_sql: str) -> pd.DataFrame:
             return pd.DataFrame(rows, columns=cols)
 
 
+def sample_cdm(conn, n_patients: int, cdm: str, seed: int = 0):
+    """Download a fixed-size patient sample from a Databricks-hosted CDM.
+
+    The sample and the event joins are executed on the cluster; only the
+    sampled patients' rows are transferred. The sample is deterministic for a
+    given seed and nested, so 10k is a subset of 20k.
+
+    Returns (events, periods) as pandas DataFrames.
+    """
+    events_sql, periods_sql = build_extract_sql(cdm, n_patients, seed)
+    events = fetch(conn, to_spark(events_sql))
+    periods = fetch(conn, to_spark(periods_sql))
+    return events, periods
+
+
 def _summary(fit, events: pd.DataFrame, periods: pd.DataFrame) -> dict:
     return dict(
         patients=int(len(periods)),
@@ -172,37 +226,49 @@ def main(argv=None):
     ap.add_argument("--token", default=None)
     ap.add_argument("--k", type=int, default=20,
                     help="coupling rank (K); lower it for small cohorts")
+    ap.add_argument("--n-patients", type=int, default=None,
+                    help="fixed patient sample, selected on the cluster")
+    ap.add_argument("--seed", type=int, default=0,
+                    help="hash seed for the patient sample (deterministic)")
     ap.add_argument("--max-patients", type=int, default=None,
-                    help="local cap passed to fit_perdomain")
+                    help="local cap passed to fit_perdomain after download")
     ap.add_argument("--sample-pct", type=int, default=None,
-                    help="deterministic SQL patient sample, 1-100")
+                    help="percentage SQL sample; do not combine with --n-patients")
     ap.add_argument("--out", default="results/databricks_fit.pkl")
     ap.add_argument("--summary", default="results/databricks_fit.json")
     ap.add_argument("--dry-run", action="store_true",
                     help="print the translated SQL and exit")
     args = ap.parse_args(argv)
 
+    if args.n_patients is not None and args.sample_pct is not None:
+        ap.error("use --n-patients or --sample-pct, not both")
     if args.sample_pct is not None and not 1 <= args.sample_pct <= 100:
         ap.error("--sample-pct must be between 1 and 100")
 
-    events_sql = to_spark(EXTRACT_EVENTS.format(cdm=args.cdm),
-                          args.sample_pct)
-    periods_sql = to_spark(EXTRACT_PERIODS.format(cdm=args.cdm),
-                           args.sample_pct)
+    events_sql, periods_sql = build_extract_sql(args.cdm, args.n_patients,
+                                                args.seed)
+    events_spark = to_spark(events_sql, args.sample_pct)
+    periods_spark = to_spark(periods_sql, args.sample_pct)
 
     if args.dry_run:
         print("--- events (Spark SQL) ---")
-        print(events_sql)
+        print(events_spark)
         print("\n--- periods (Spark SQL) ---")
-        print(periods_sql)
+        print(periods_spark)
         return 0
 
     t0 = time.time()
     conn = connect(args)
     try:
-        print(f"extracting from {args.cdm} ...")
-        events = fetch(conn, events_sql)
-        periods = fetch(conn, periods_sql)
+        if args.n_patients is not None:
+            print(f"sampling {args.n_patients:,} patients on the cluster "
+                  f"(seed {args.seed}) ...")
+            events = fetch(conn, events_spark)
+            periods = fetch(conn, periods_spark)
+        else:
+            print(f"extracting from {args.cdm} ...")
+            events = fetch(conn, events_spark)
+            periods = fetch(conn, periods_spark)
     finally:
         conn.close()
 
