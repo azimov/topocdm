@@ -114,7 +114,8 @@ tests/test_model.py (15) + tests/test_perdomain.py (7) + tests/test_visitanchor.
 figs/, results/
 docs/MODEL_V2.md, docs/RESULTS_PERDOMAIN.md, docs/MIMIC_RUN.md,
 docs/MIMIC_INTERVALS.md, docs/SUBJECT_SPECTRA.md, docs/FIDELITY_REPORT.md,
-docs/DATABRICKS.md, WHERE_THIS_STANDS.md, BRIEFING.md, MODEL_AND_READING.md
+docs/DATABRICKS.md, docs/SETUP.md, WHERE_THIS_STANDS.md, BRIEFING.md,
+MODEL_AND_READING.md
 ```
 
 Repo: **github.com/azimov/topocdm** (private, MIT). PDFs are gitignored.
