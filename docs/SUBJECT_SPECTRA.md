@@ -50,3 +50,26 @@ The visit anchor fixed *when* events happen. It did not fix *what happens togeth
 This is a meaningful diagnostic, not a cosmetic one. It says the next layer must be a within-visit concept dependence — a topic or low-rank coupling on the visit catalogue — fitted on the condition–drug co-occurrence matrix. Until that is added, the model reproduces the encounter timing and the marginal concept frequencies, but not the subject-level network.
 
 Caveat: 73 of 100 synthetic patients have a condition–drug graph with at least four nodes, against 100 MIMIC patients. The synthetic patients who are missing one are those whose generated visit contents were too sparse; that is itself part of the same under-structuring.
+
+---
+
+## 4. Synthea
+
+The same object on the Synthea slice. `visit_occurrence_id` is empty there, so the encounter is the date, exactly as the MIMIC spectra were built. 8,631 of 10,000 patients have a condition–drug graph with at least four nodes.
+
+![Synthea examples](figs/fig33_synthea_subject_spectra_examples.png)
+
+| | MIMIC | topocdm synthetic | Synthea |
+|---|---:|---:|---:|
+| patients with a graph | 100 | 73 | 8,631 |
+| concepts per graph, median | 82 | 104 | 13 |
+| `λ2`, median | 0.133 | 0.361 | 0.000 |
+| `λn`, median | 1.333 | 1.100 | 2.000 |
+
+Synthea's subject spectra are a long diagonal ramp from 0 to 2. The graph is small and bipartite — conditions on one side, drugs on the other — and often disconnected, so `λ2 = 0` and `λn = 2`. MIMIC's are a fast rise to 1, a flat middle, and a high-end tail: a large connected graph with community structure. The topocdm synthetic is a fast rise to 1 and flat: near-complete.
+
+![Three sources](figs/fig34_subject_spectra_three_sources.png)
+
+The pooled-eigenvalue KS is misleading here: Synthea vs MIMIC is 0.39, MIMIC vs synthetic is 0.63, which would suggest Synthea is closer to MIMIC. It is not. Both pooled spectra are dominated by the flat region at 1, so the KS mostly measures agreement there. The tail statistics — `λ2`, `λn`, node count — are the meaningful comparison, and on those the three sources are qualitatively distinct.
+
+The practical consequence: the Synthea slice and the MIMIC slice do not share a subject-level structure, so a model fitted to one is not a guide to the other. The model fitted to MIMIC is closer in scale (82 against 104 concepts) but over-connects (`λ2` 0.36 against 0.13); that over-connection, not the node count, is what the within-visit concept layer has to fix.
