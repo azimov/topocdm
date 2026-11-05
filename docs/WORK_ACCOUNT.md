@@ -113,6 +113,32 @@ need access to the personal repository. If the enterprise blocks pushes from
 personal devices, run the same push from the work laptop after cloning the
 work repository there.
 
+## If you cannot create a repository in the work account
+
+The EMU personal namespace is often locked down. The repo must be created by
+someone with permission. In order of preference:
+
+1. **An enterprise organisation.** Create the private repository in an
+   enterprise org where you have write/create permission (the normal home for
+   work code), then add the `work` remote and push. The EMU personal namespace
+   being locked does not necessarily lock the orgs you belong to.
+2. **An org owner or IT.** Ask them to create a private repository (or a
+   dedicated research org) and grant `JGilber2_JNJT` write access. Then:
+   `git remote add work <url>` and `git push work main`.
+3. **The work laptop or approved host, not GitHub.** If GitHub is not permitted
+   for this code, the mirror does not have to be GitHub. Carry a bundle through
+   the approved transfer channel:
+   ```bash
+   git bundle create topocdm.bundle --all
+   # transfer the bundle to the work laptop, then:
+   git clone topocdm.bundle topocdm
+   ```
+   The work scanner sees the local checkout; nothing is public. The `work`
+   remote is host-agnostic if your enterprise uses GitHub Enterprise, GitLab
+   or Azure DevOps.
+4. **Do not create a public repo as a workaround.** That is the one option that
+   defeats the purpose.
+
 ## Rules
 
 - **Neither repository is public.** The work mirror exists so the scanner can
