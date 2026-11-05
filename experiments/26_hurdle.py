@@ -116,7 +116,9 @@ def run(name, events, periods, visits, R, prefix):
         after.append((hurdle.apply_prevalence(Xs, pi_r) > 0).mean(0))
 
     # evaluate on concepts the training split could know about
-    keep = (prev_tr >= 0.01) & (prev_te >= 0.01)
+    train_total = np.asarray(X_tr.sum(axis=0)).ravel()
+    test_total  = np.asarray(X_te.sum(axis=0)).ravel()
+    keep = (train_total > 10) & (test_total > 10)
     idx = np.where(keep)[0]
     out = dict(name=name, R=R, n_train=len(train), n_test=len(test),
                n_concepts=int(len(concept_ids)), n_compared=int(len(idx)),

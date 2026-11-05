@@ -1,6 +1,6 @@
 # Fidelity report: prevalence and incidence
 
-*Living document. Version 2, 2026-11-05. Code: `experiments/25_fixes_fidelity.py`. Raw results: `results/fixes_fidelity.json`.*
+*Living document. Version 4, 2026-11-05. Code: `experiments/25_fixes_fidelity.py`. Raw results: `results/fixes_fidelity.json`.*
 
 This is the single place where the model's per-concept **prevalence** and **incidence** fidelity is recorded, together with how those quantities are computed. Update it by re-running the experiment, replacing the numbers and figures below, and adding a line to the change log.
 
@@ -34,7 +34,7 @@ A model can get one right and the other wrong. This one gets the total record co
 
 ### 1.3 Concept set and denominator
 
-Both quantities are computed on the mapped clinical concepts — the five clinical domains (condition, drug, measurement, observation, procedure), excluding unmapped (`concept_id = 0`) records. Results are reported for concepts with real prevalence at least 1%, because the ratio is unstable below that. The number compared is stated in every table: on Synthea it is **446 of 679** concepts (real prevalence ≥ 1%); on MIMIC it is **2,715 of 2,715**.
+Both quantities are computed on the mapped clinical concepts — the five clinical domains (condition, drug, measurement, observation, procedure), excluding unmapped (`concept_id = 0`) records. Results are reported for concepts with **more than 10 records in the real data**: the inclusion rule is record-count-based, not prevalence-based. On Synthea that is **537 of 679** concepts; on MIMIC, **766 of 2,715**. The three prevalence bins (§1.4) still start at 1% real prevalence. They contain 446 of the 537 Synthea concepts — **180 rare, 189 mid, 77 common** — and all 766 MIMIC concepts — **46 rare, 461 mid, 259 common**. The other 91 Synthea concepts have more than 10 records but prevalence below 1%, so they are in the overall figures but in no bin. Because the inclusion rule changed, this coverage is not directly comparable with version 3.
 
 ### 1.4 Prevalence bins
 
@@ -102,8 +102,8 @@ The fidelity loop does **not** apply the refill re-dating. Refill preserves reco
 
 | dataset | R | concepts compared | prevalence coverage | incidence coverage | incidence ratio (median) |
 |---|---:|---:|---:|---:|---:|
-| Synthea (2k) | 50 | 446 of 679 | **43%** | **100%** | 0.99 |
-| MIMIC-IV demo | 50 | 2,715 of 2,715 | **82%** | **100%** | 1.00 |
+| Synthea (2k) | 50 | 537 of 679 | **47%** | **100%** | 0.99 |
+| MIMIC-IV demo | 50 | 766 of 2,715 | **46%** | **100%** | 1.01 |
 
 ### 3.2 By prevalence bin
 
@@ -112,13 +112,15 @@ The fidelity loop does **not** apply the refill re-dating. Refill preserves reco
 | Synthea | rare 1–3% | 180 | **57%** | 78 / 0 | 1.02 | 0.99 |
 | Synthea | mid 3–30% | 189 | **47%** | 84 / 17 | 1.13 | 0.99 |
 | Synthea | common 30–100% | 77 | **1%** | 48 / 28 | 1.19 | 1.00 |
-| MIMIC | rare 1–3% | 1,563 | **93%** | 111 / 0 | 1.00 | 0.98 |
-| MIMIC | mid 3–30% | 893 | **81%** | 164 / 8 | 1.12 | 1.01 |
+| MIMIC | rare 1–3% | 46 | **0%** | 46 / 0 | 11.00 | 1.00 |
+| MIMIC | mid 3–30% | 461 | **65%** | 152 / 8 | 1.22 | 1.01 |
 | MIMIC | common 30–100% | 259 | **19%** | 31 / 180 | 0.75 | 1.01 |
 
-**Incidence is calibrated everywhere.** The incidence ratio is between 0.98 and 1.01 in every bin on both datasets, and coverage is 100%. The model reproduces how often each concept is recorded per unit of follow-up.
+On Synthea the three bins sum to 446, not 537: 91 kept concepts have more than 10 real records but real prevalence below the 1% rare-bin floor, so they enter the overall coverage but no bin. On MIMIC the bins sum to 766, the full comparison set.
 
-**Prevalence is not.** On Synthea, the gate fails in all three bins (57%, 47%, 1%). On MIMIC, rare and mid pass (93%, 81%) but common fails badly (19%). The overall numbers (43% and 82%) average over bins that fail for different reasons.
+**Incidence is calibrated everywhere.** The incidence ratio is between 0.99 and 1.02 in every bin on both datasets, and coverage is 100%. The model reproduces how often each concept is recorded per unit of follow-up.
+
+**Prevalence is not.** On Synthea, the gate fails in all three bins (57%, 47%, 1%). On MIMIC, all three bins fail (0%, 65%, 19%). The overall numbers (47% and 46%) average over bins that fail for different reasons; on Synthea the overall is also pulled up by the 91 kept concepts below 1% prevalence, which are outside the bins.
 
 ---
 
@@ -126,7 +128,7 @@ The fidelity loop does **not** apply the refill re-dating. Refill preserves reco
 
 ### 4.1 Rare and mid: over-spread
 
-In the rare bin, every miss is an over-prediction on both datasets (78 over / 0 under on Synthea; 111 over / 0 under on MIMIC). The model spreads a rare concept across too many patients: a concept that the real data concentrates in a few patients is given to many, each with few records. This is the "spread too thin" mechanism, and a per-patient concept preference (topic/Dirichlet layer) is the natural candidate.
+In the rare bin, every miss is an over-prediction on both datasets (78 over / 0 under on Synthea; 46 over / 0 under on MIMIC). With the more-than-10-records rule the MIMIC rare bin is 46 concepts and the median ratio is 11.0: every one is over-predicted. The model spreads a rare concept across too many patients: a concept that the real data concentrates in a few patients is given to many, each with few records. This is the "spread too thin" mechanism, and a per-patient concept preference (topic/Dirichlet layer) is the natural candidate.
 
 ### 4.2 Common: catalogue / assignment, not level
 
@@ -155,17 +157,17 @@ The visit count, the events per visit, and the total records are on target. The 
 
 | dataset | bin | n | prevalence coverage before → after | ratio before → after |
 |---|---|---:|---|---|
-| Synthea | rare 1–3% | 157 | 50% → **59%** | 1.66 → **1.09** |
-| Synthea | mid 3–30% | 173 | 56% → **66%** | 1.23 → **1.02** |
+| Synthea | rare 1–3% | 80 | 18% → **41%** | 10.29 → **1.08** |
+| Synthea | mid 3–30% | 173 | 55% → **66%** | 1.23 → **1.02** |
 | Synthea | common 30–100% | 76 | 8% → **34%** | 1.23 → **1.03** |
-| MIMIC | mid 3–30% | 828 | 89% → 75% | 0.72 → 0.51 |
-| MIMIC | common 30–100% | 329 | 36% → 52% | 0.66 → 0.84 |
+| MIMIC | mid 3–30% | 67 | 70% → 66% | 1.48 → 0.94 |
+| MIMIC | common 30–100% | 307 | 36% → 55% | 0.67 → 0.87 |
 
 ![Held-out coverage before and after](figs/fig40_hurdle_coverage.png)
 
-**The level is fixed; the gate is not.** On Synthea the layer moves the prevalence ratio from 1.66/1.23/1.23 to 1.09/1.02/1.03 — the per-concept level bias is largely removed. Coverage improves (overall 44% → 57%; common 8% → 34%) but does not reach 80% in any bin. The remaining gap is held-out sampling noise (the test set is 400 patients, so per-concept prevalence has its own sampling error) plus the still-wrong joint assignment, which this layer does not touch.
+**The level is fixed; the gate is not.** On Synthea the layer moves the prevalence ratio from 10.29/1.23/1.23 to 1.08/1.02/1.03 — the per-concept level bias is largely removed. Coverage improves (overall 32% → 51%; common 8% → 34%) but does not reach 80% in any bin. The remaining gap is held-out sampling noise (the test set is 400 patients, so per-concept prevalence has its own sampling error) plus the still-wrong joint assignment, which this layer does not touch.
 
-The MIMIC held-out test is 20 patients. The mid ratio worsens and overall coverage falls (74% → 69%); at that sample size the comparison is not reliable. It is reported, not interpreted.
+The MIMIC held-out test is 20 patients, and it has no rare bin: a concept with more than 10 test records cannot have 1–3% prevalence in 20 patients. Overall coverage improves (42% → 57%), the mid ratio moves from 1.48 to 0.94, and the common ratio moves from 0.67 to 0.87. At that sample size the comparison is not reliable. It is reported, not interpreted.
 
 The layer is a post-generation prevalence calibration, not a joint model. It does not fix co-occurrence, refill, or the visit content; those remain the topic/refill work.
 
@@ -183,7 +185,7 @@ Current status:
 | dataset | rare | mid | common | gate |
 |---|---:|---:|---:|---|
 | Synthea | 57% (fail) | 47% (fail) | 1% (fail) | **fail** |
-| MIMIC | 93% (pass) | 81% (pass) | 19% (fail) | **fail** |
+| MIMIC | 0% (fail) | 65% (fail) | 19% (fail) | **fail** |
 
 ---
 
@@ -224,6 +226,7 @@ If the model or the sample changes, also update §2 (what is fitted, and on what
 | 1 | 2026-11-05 | First version. Overall coverage: Synthea 40.6%, MIMIC 81.8%; R = 20 / 50. |
 | 2 | 2026-11-05 | Split coverage by prevalence bin; added incidence ratio, denominator, and the common-bin mechanism diagnosis. R = 50 on both. Synthea 43% overall (57/47/1 by bin), MIMIC 82% (93/81/19). |
 | 3 | 2026-11-05 | Added the per-concept prevalence layer (held-out 80/20, Beta posterior). Synthea ratios 1.66/1.23/1.23 → 1.09/1.02/1.03; coverage 44% → 57% overall, still below the 80% gate. MIMIC held-out n=20, not interpretable. |
+| 4 | 2026-11-05 | Replaced the 1%-prevalence inclusion rule with more than 10 real records (and more than 10 in both train and test splits for the held-out test). Denominators: Synthea 537 of 679 (446 in the three prevalence bins; 91 kept concepts have prevalence below 1%), MIMIC 766 of 2,715. New coverage: Synthea 47% overall (57/47/1 by bin), MIMIC 46% (0/65/19). Coverage is not directly comparable with version 3. |
 
 ---
 

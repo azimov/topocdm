@@ -2,7 +2,7 @@
  "synthea": {
   "R": 50,
   "n_concepts": 679,
-  "n_compared": 446,
+  "n_compared": 537,
   "bins": {
    "rare_1_3": {
     "n": 180,
@@ -32,8 +32,8 @@
     "prevalence_under": 28
    }
   },
-  "incidence_ratio_median": 0.9939151725004203,
-  "prevalence_coverage": 0.4282511210762332,
+  "incidence_ratio_median": 0.9938586692185849,
+  "prevalence_coverage": 0.4692737430167598,
   "incidence_coverage": 1.0,
   "prevalence_real": [
    0.1330000000000001,
@@ -5487,24 +5487,24 @@
  "mimic": {
   "R": 50,
   "n_concepts": 2715,
-  "n_compared": 2715,
+  "n_compared": 766,
   "bins": {
    "rare_1_3": {
-    "n": 1563,
-    "prevalence_coverage": 0.9289827255278311,
+    "n": 46,
+    "prevalence_coverage": 0.0,
     "incidence_coverage": 1.0,
-    "prevalence_ratio_median": 1.0,
-    "incidence_ratio_median": 0.9827433490964136,
-    "prevalence_over": 111,
+    "prevalence_ratio_median": 10.999999999999998,
+    "incidence_ratio_median": 1.0010865112100265,
+    "prevalence_over": 46,
     "prevalence_under": 0
    },
    "mid_3_30": {
-    "n": 893,
-    "prevalence_coverage": 0.8073908174692049,
+    "n": 461,
+    "prevalence_coverage": 0.6529284164859002,
     "incidence_coverage": 1.0,
-    "prevalence_ratio_median": 1.125,
-    "incidence_ratio_median": 1.0072167909680232,
-    "prevalence_over": 164,
+    "prevalence_ratio_median": 1.222222222222222,
+    "incidence_ratio_median": 1.0125842128605866,
+    "prevalence_over": 152,
     "prevalence_under": 8
    },
    "common_30_100": {
@@ -5517,8 +5517,8 @@
     "prevalence_under": 180
    }
   },
-  "incidence_ratio_median": 0.9990483862931528,
-  "prevalence_coverage": 0.8180478821362799,
+  "incidence_ratio_median": 1.0104559012457421,
+  "prevalence_coverage": 0.4556135770234987,
   "incidence_coverage": 1.0,
   "prevalence_real": [
    0.01,

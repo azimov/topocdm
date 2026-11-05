@@ -126,15 +126,16 @@ def _run_dataset(name, events, periods, visits, R, out_prefix):
     plo, pmid, phi = np.percentile(P, [5, 50, 95], axis=0)
     ilo, imid, ihi = np.percentile(I, [5, 50, 95], axis=0)
 
-    # keep concepts with a non-trivial real prevalence for the plots/ratios
-    keep = prev_real >= 0.01
+    # keep concepts with more than 10 real records for the plots/ratios
+    real_total = np.asarray(X_real.sum(axis=0)).ravel()
+    keep = real_total > 10
     order = np.argsort(-prev_real)
     o = order[keep[order]]
     cover_p = float(np.mean((prev_real[o] >= plo[o]) & (prev_real[o] <= phi[o])))
     cover_i = float(np.mean((inc_real[o] >= ilo[o]) & (inc_real[o] <= ihi[o])))
     bins = {}
     for bname, blo, bhi in BINS:
-        m = (prev_real >= blo) & (prev_real < bhi)
+        m = keep & (prev_real >= blo) & (prev_real < bhi)
         if m.sum() == 0:
             continue
         ip = (prev_real[m] >= plo[m]) & (prev_real[m] <= phi[m])
