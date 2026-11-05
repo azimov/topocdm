@@ -11,10 +11,10 @@ lab is optional.
 bash scripts/setup_work_laptop.sh
 ```
 
-It checks Python and git, creates `.venv`, installs the project with dev tools,
-installs the Databricks connector, installs circepy from PR 60, builds the
-optional C kernel, runs the 28 tests, and prints the Spark SQL for a 10k
-patient sample without connecting.
+It checks Python and git, creates `.venv`, installs the project with the dev
+and Databricks extras, installs circepy from PR 60, builds the optional C
+kernel, runs the 28 tests, and prints the Spark SQL for a 10k patient sample
+without connecting.
 
 Useful environment switches:
 
@@ -45,8 +45,7 @@ path.
 python3 -m venv .venv
 source .venv/bin/activate
 python -m pip install -U pip wheel setuptools
-pip install -e ".[dev]"
-pip install "databricks-sql-connector[pyarrow]"
+pip install -e ".[dev,databricks]"
 pip install "ohdsi-circepy @ git+https://github.com/OHDSI/Circepy.git@7c32a12485fc788be9882c9ea9c7cf1cd89255d6"
 ```
 
@@ -56,8 +55,7 @@ pip install "ohdsi-circepy @ git+https://github.com/OHDSI/Circepy.git@7c32a12485
 py -3.11 -m venv .venv
 .venv\Scripts\Activate.ps1
 python -m pip install -U pip wheel setuptools
-pip install -e ".[dev]"
-pip install "databricks-sql-connector[pyarrow]"
+pip install -e ".[dev,databricks]"
 pip install "ohdsi-circepy @ git+https://github.com/OHDSI/Circepy.git@7c32a12485fc788be9882c9ea9c7cf1cd89255d6"
 ```
 
@@ -74,38 +72,50 @@ bash scripts/build_fast.sh
 It needs `clang` or `gcc`. If it fails, nothing breaks; the pure-Python kernel
 is used. `topocdm/_fast.so` is gitignored.
 
-## Databricks credentials
+## Databricks connection card
 
-The script and `scripts/fit_databricks.py` read the standard environment
-variables:
+`scripts/fit_databricks.py` reads
+`~/.config/ohdsi/databricks_connection.yml`:
 
-```bash
-export DATABRICKS_SERVER_HOSTNAME=adb-....azuredatabricks.net
-export DATABRICKS_HTTP_PATH=/sql/1.0/warehouses/....
-export DATABRICKS_TOKEN=...            # never commit this
+```yaml
+databricks:
+  driver: "databricks"
+  connection:
+    server_hostname: "adb-....azuredatabricks.net"
+    http_path: "/sql/1.0/warehouses/...."
+    personal_access_token: "dapi...."
+
+cmds:
+  mycdm_version:
+    cdm_schema: "catalog.schema"
+    vocabulary_schema: "catalog.schema"
+    results_schema: "scratch.schema"   # writable; the sample table goes here
 ```
 
-The CDM location is `--cdm catalog.schema`, for example `main.omop`. Do not put
-the token in the repo; `.secrets/` is gitignored but environment variables are
-the intended route.
+`--cmd mycdm_version` selects the entry; the first entry is used if `--cmd` is
+omitted. `results_schema` is required for `--n-patients`: the sample is written
+there as a scratch table and dropped after the fetch. The token needs
+`CREATE TABLE` and `DROP TABLE` on that schema. `--cdm` and `--results-schema`
+override the card. Do not commit the card or the token.
 
 ## Verify the install
 
 ```bash
 MPLCONFIGDIR=./.mplconfig .venv/bin/python -m pytest -q          # 28 passed
 .venv/bin/python scripts/fit_databricks.py \
-  --cdm main.omop --n-patients 10000 --dry-run | head
+  --cmd mycdm_version --n-patients 10000 --dry-run | head
 ```
 
-The dry run prints the translated Spark SQL: a `with keep as materialized (...)`
-CTE that selects 10k patients on the cluster, and a
-`join keep using (person_id)` in every domain branch. It does not connect.
+The dry run prints the Spark SQL without connecting: a
+`create or replace table <results_schema>.topocdm_sample_...` that writes the
+sample to your scratch schema, and a `join ... using (person_id)` in every
+domain branch. It does not read or write anything.
 
 ## First fit
 
 ```bash
 MPLCONFIGDIR=./.mplconfig .venv/bin/python scripts/fit_databricks.py \
-  --cdm <catalog.schema> --n-patients 10000 --k 20
+  --cmd <name> --n-patients 10000 --k 20
 ```
 
 Outputs `results/databricks_fit.pkl` (the fitted `PerDomainFit`) and
@@ -117,14 +127,15 @@ death fraction, parameter count, K, atoms).
 The sample is chosen on the cluster and is deterministic and nested:
 
 ```bash
---n-patients 10000 --seed 0
---n-patients 20000 --seed 0     # contains the 10k
---n-patients 50000 --seed 0     # contains the 20k
+--cmd <name> --n-patients 10000 --seed 0
+--cmd <name> --n-patients 20000 --seed 0     # contains the 10k
+--cmd <name> --n-patients 50000 --seed 0     # contains the 20k
 ```
 
-The cost is one sort of the person table. The event tables are joined to the
-sample on the cluster and only the sampled rows are downloaded. Do not combine
-`--n-patients` with `--sample-pct`; the latter is a rough percentage filter.
+The cost is one sort of the person table, plus writing the scratch table. The
+event tables are joined to the scratch table on the cluster and only the
+sampled rows are downloaded. `--keep-scratch` leaves the table in place;
+otherwise it is dropped after the fetch.
 
 ## Troubleshooting
 
@@ -136,6 +147,14 @@ to GitHub. Try the branch instead of the commit:
 **`databricks-sql-connector` installs but Arrow is missing.** Install the
 extra: `pip install "databricks-sql-connector[pyarrow]"`. Without it the script
 falls back to `fetchall` (slower, still correct).
+
+**`PyYAML is required` or the card is not found.** Install the Databricks
+extra (`pip install -e ".[dev,databricks]"`) and check the path
+(`~/.config/ohdsi/databricks_connection.yml`). `--dry-run` can use
+`--cdm`/`--results-schema` placeholders without the card.
+
+**`results_schema` permission denied.** The token needs `CREATE TABLE` and
+`DROP TABLE` on the scratch schema; the sample table is written there.
 
 **The C kernel build fails.** Harmless. The pure-Python kernel is used; the
 tests pass either way.
@@ -161,4 +180,4 @@ the Python commands are otherwise identical.
 | `scripts/push_work.sh` | guarded push to the work mirror |
 | `docs/FIDELITY_REPORT.md` | prevalence/incidence fidelity, if you run the fixture experiments |
 | `results/` | fit pickle and JSON summary |
-| `.secrets/` | local credentials, gitignored; not needed if you use env vars |
+| `.secrets/` | local credentials, gitignored; not needed with the connection card |

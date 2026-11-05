@@ -63,11 +63,8 @@ fi
 source "$VENV/bin/activate"
 python -m pip install --upgrade pip wheel setuptools
 
-say "installing topocdm (editable, with dev tools)"
-pip install -e "$REPO_DIR[dev]"
-
-say "installing the Databricks SQL connector"
-pip install "databricks-sql-connector[pyarrow]"
+say "installing topocdm (editable, with dev and Databricks tools)"
+pip install -e "$REPO_DIR[dev,databricks]"
 
 if [ "${SKIP_CIRCE:-0}" = "1" ]; then
   say "skipping circepy (SKIP_CIRCE=1)"
@@ -111,18 +108,13 @@ if [ "${SKIP_CIRCE:-0}" != "1" ]; then
   fi
 fi
 
-say "Databricks credentials"
-missing=0
-for v in DATABRICKS_SERVER_HOSTNAME DATABRICKS_HTTP_PATH DATABRICKS_TOKEN; do
-  if [ -z "${!v:-}" ]; then
-    echo "  $v is not set"
-    missing=1
-  fi
-done
-if [ "$missing" = 0 ]; then
-  echo "  all three are set"
+say "Databricks connection card"
+CFG="${DATABRICKS_CONFIG:-$HOME/.config/ohdsi/databricks_connection.yml}"
+if [ -f "$CFG" ]; then
+  echo "  found $CFG"
 else
-  echo "  set them before the first real fit (see docs/SETUP.md)"
+  echo "  not found: create $CFG with databricks.connection and a cmds.<name>"
+  echo "  entry (cdm_schema, vocabulary_schema, writable results_schema)"
 fi
 
 cat <<EOF
@@ -130,12 +122,12 @@ cat <<EOF
 Setup complete.
 
 Next:
-  1. export DATABRICKS_SERVER_HOSTNAME=...
-     export DATABRICKS_HTTP_PATH=...
-     export DATABRICKS_TOKEN=...
+  1. create ~/.config/ohdsi/databricks_connection.yml with
+     databricks.connection and a cmds.<name> entry:
+       cdm_schema, vocabulary_schema, results_schema (writable scratch)
   2. first fit, 10k patients, selected on the cluster:
        MPLCONFIGDIR=./.mplconfig .venv/bin/python scripts/fit_databricks.py \\
-         --cdm <catalog.schema> --n-patients 10000 --k 20
+         --cmd <name> --n-patients 10000 --k 20
   3. increase the sample: 20000, 50000, with the same --seed. The samples are
      nested, so 10k is a subset of 20k.
 

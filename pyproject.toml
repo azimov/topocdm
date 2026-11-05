@@ -18,6 +18,10 @@ dependencies = [
 
 [project.optional-dependencies]
 dev = ["pytest>=7", "matplotlib>=3.7"]
+databricks = [
+    "PyYAML>=6.0",
+    "databricks-sql-connector[pyarrow]>=3.0",
+]
 
 [tool.setuptools]
 packages = ["topocdm"]
