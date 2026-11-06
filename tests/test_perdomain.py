@@ -62,6 +62,63 @@ def test_duration_mixture_recovers_zero_mass():
     assert 250 < np.median(samp[samp > 0]) < 500
 
 
+def test_duration_domain_without_positive_intervals():
+    """Regression (#2): a drug domain where every era is zero-length.
+
+    Fit crashed in np.quantile with 'index -1 is out of bounds for axis 0
+    with size 0'. The domain is a pure point mass at zero, so pi0 is 1 and
+    sampling returns zeros; the quantile grid must stay the same length.
+    """
+    n = 50
+    events = pd.DataFrame(
+        {
+            "person_id": np.repeat(np.arange(1, n + 1), 2),
+            "domain": "drug",
+            "concept_id": np.tile([200, 201], n),
+            "start_date": pd.Timestamp("2020-01-01"),
+            "end_date": pd.Timestamp("2020-01-01"),
+        }
+    )
+    dur = pdm.fit_durations(events, "drug")
+    assert dur["pi0"] == 1.0
+    assert dur["k"] == 1
+    assert len(dur["qvals"]) == len(dur["qgrid"])
+    samp = pdm.sample_durations(dur, 100, np.random.default_rng(0))
+    assert np.all(samp == 0)
+
+
+def test_duration_domain_absent_from_extraction():
+    """Regression (#2): a 100-patient sample can have no condition or drug eras.
+
+    An absent domain must return a harmless placeholder rather than raising,
+    so a small warehouse sample still fits.
+    """
+    events = pd.DataFrame(
+        {
+            "person_id": [1, 2, 3],
+            "domain": "measurement",
+            "concept_id": [300, 301, 300],
+            "start_date": pd.Timestamp("2020-01-01"),
+            "end_date": pd.NaT,
+        }
+    )
+    dur = pdm.fit_durations(events, "condition")
+    assert dur["pi0"] == 1.0
+    assert len(dur["qvals"]) == len(dur["qgrid"])
+    assert np.all(pdm.sample_durations(dur, 10, np.random.default_rng(0)) == 0)
+
+
+def test_fit_perdomain_with_empty_interval_domain():
+    """Regression (#2): the whole fit must survive a missing/zero-length domain."""
+    events, periods = _synthetic(n=200)
+    events.loc[events["domain"] == "drug", "end_date"] = events.loc[
+        events["domain"] == "drug", "start_date"
+    ]
+    fit = pdm.fit_perdomain(events, periods, K=2)
+    assert fit.duration["drug"]["pi0"] == 1.0
+    assert np.isfinite(fit.k)
+
+
 def test_build_eras_merges_overlapping_and_adjacent():
     df = pd.DataFrame(
         {

@@ -283,14 +283,39 @@ def fit_durations(events: pd.DataFrame, domain: str):
     sub = events[events["domain"] == domain]
     d = (sub["end_date"] - sub["start_date"]).dt.days.to_numpy(dtype=float)
     d = np.clip(d, 0.0, None)
-    pi0 = float((d == 0).mean())
-    dpos = d[d > 0]
     qgrid = np.linspace(0.0, 1.0, 101)
-    qvals = np.quantile(dpos, qgrid)
-    # parametric diagnostics (not used for generation)
-    logd = np.log(dpos)
-    logn = (float(logd.mean()), float(logd.std(ddof=1)))
-    k2, pi2, mu2, s2 = _gmm_bic(logd, kmax=2)
+    dpos = d[d > 0]
+    if len(d) == 0:
+        # Domain absent from the extraction (e.g. a 100-patient sample with no
+        # drug eras). Nothing to estimate; generation skips absent domains.
+        return {
+            "pi0": 1.0,
+            "qgrid": qgrid,
+            "qvals": np.zeros_like(qgrid),
+            "k": 1,
+            "pi": np.array([1.0]),
+            "mu": np.array([0.0]),
+            "s": np.array([1.0]),
+            "lognormal_mu": 0.0,
+            "lognormal_s": 0.0,
+            "observed_median": 0.0,
+            "observed_zero": 1.0,
+        }
+    pi0 = float((d == 0).mean())
+    if len(dpos) == 0:
+        # Every interval is zero-length: a pure point mass at zero. The
+        # quantiles are unused by sample_durations at pi0 == 1, but must stay
+        # the same length as qgrid so np.interp never sees an empty grid.
+        qvals = np.zeros_like(qgrid)
+        qvals[-1] = float(np.max(d))
+        logn = (0.0, 0.0)
+        k2, pi2, mu2, s2 = 1, np.array([1.0]), np.array([0.0]), np.array([1.0])
+    else:
+        qvals = np.quantile(dpos, qgrid)
+        # parametric diagnostics (not used for generation)
+        logd = np.log(dpos)
+        logn = (float(logd.mean()), float(logd.std(ddof=1)))
+        k2, pi2, mu2, s2 = _gmm_bic(logd, kmax=2)
     return {
         "pi0": pi0,
         "qgrid": qgrid,
