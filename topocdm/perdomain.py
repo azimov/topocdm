@@ -285,9 +285,15 @@ def fit_durations(events: pd.DataFrame, domain: str):
     d = np.clip(d, 0.0, None)
     qgrid = np.linspace(0.0, 1.0, 101)
     dpos = d[d > 0]
-    if len(d) == 0:
-        # Domain absent from the extraction (e.g. a 100-patient sample with no
-        # drug eras). Nothing to estimate; generation skips absent domains.
+    if len(dpos) == 0:
+        # No positive-length events: either the domain is absent from the
+        # extraction (a small sample can have no drug eras) or every interval
+        # in it is zero-length. Both are a pure point mass at zero.
+        #
+        # qvals must still match qgrid in length: sample_durations interpolates
+        # against it, and np.interp rejects mismatched lengths. At pi0 == 1 the
+        # interpolation branch is never reached (rng.random() >= 1.0 is always
+        # False), so these values are never read, only shape-checked.
         return {
             "pi0": 1.0,
             "qgrid": qgrid,
@@ -302,20 +308,11 @@ def fit_durations(events: pd.DataFrame, domain: str):
             "observed_zero": 1.0,
         }
     pi0 = float((d == 0).mean())
-    if len(dpos) == 0:
-        # Every interval is zero-length: a pure point mass at zero. The
-        # quantiles are unused by sample_durations at pi0 == 1, but must stay
-        # the same length as qgrid so np.interp never sees an empty grid.
-        qvals = np.zeros_like(qgrid)
-        qvals[-1] = float(np.max(d))
-        logn = (0.0, 0.0)
-        k2, pi2, mu2, s2 = 1, np.array([1.0]), np.array([0.0]), np.array([1.0])
-    else:
-        qvals = np.quantile(dpos, qgrid)
-        # parametric diagnostics (not used for generation)
-        logd = np.log(dpos)
-        logn = (float(logd.mean()), float(logd.std(ddof=1)))
-        k2, pi2, mu2, s2 = _gmm_bic(logd, kmax=2)
+    qvals = np.quantile(dpos, qgrid)
+    # parametric diagnostics (not used for generation)
+    logd = np.log(dpos)
+    logn = (float(logd.mean()), float(logd.std(ddof=1)))
+    k2, pi2, mu2, s2 = _gmm_bic(logd, kmax=2)
     return {
         "pi0": pi0,
         "qgrid": qgrid,
