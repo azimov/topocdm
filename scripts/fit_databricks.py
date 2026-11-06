@@ -167,6 +167,12 @@ def main(argv=None):
         help="build the full OMOP tables (eras included) per draw; ~8x slower and "
         "cannot change prevalence or incidence",
     )
+    ap.add_argument(
+        "--fidelity-counts",
+        action="store_true",
+        help="aggregate the real side in SQL (CohortIncidence style) instead of "
+        "holding the event frame; keeps memory flat on large extracts",
+    )
     ap.add_argument("--dry-run", action="store_true", help="print the SQL and exit; no connection")
     args = ap.parse_args(argv)
 
@@ -193,7 +199,8 @@ def main(argv=None):
         backend = db.DuckDBBackend(args.duckdb)
 
     try:
-        fit, summary, events, periods = db.run_fit(
+        want_fidelity = args.fidelity is not None and args.fidelity.lower() != "none"
+        out = db.run_fit(
             backend,
             cdm,
             results,
@@ -205,10 +212,18 @@ def main(argv=None):
             cmd=cmd_name,
             out=args.out,
             summary_path=args.summary,
-            return_data=True,
+            return_data=not args.fidelity_counts,
+            return_counts=args.fidelity_counts and want_fidelity,
         )
     finally:
         backend.close()
+
+    if args.fidelity_counts and want_fidelity:
+        fit, summary, counts, periods = out
+        events = None
+    else:
+        fit, summary, events, periods = out
+        counts = None
 
     print(
         f"pulled {summary['records']:,} records for "
@@ -223,11 +238,11 @@ def main(argv=None):
     print(f"wrote {args.out} and {args.summary}")
 
     if args.fidelity is not None and args.fidelity.lower() != "none":
-        _write_fidelity(args, fit, events, periods)
+        _write_fidelity(args, fit, events, periods, counts=counts)
     return 0
 
 
-def _write_fidelity(args, fit, events, periods):
+def _write_fidelity(args, fit, events, periods, counts=None):
     """Score prevalence/incidence against the data the fit was produced from."""
     import json
 
@@ -258,6 +273,7 @@ def _write_fidelity(args, fit, events, periods):
         seed=args.seed,
         full_pipeline=args.fidelity_full,
         progress=_progress,
+        real_counts=counts,
     )
     os.makedirs(os.path.dirname(path) or ".", exist_ok=True)
     with open(path, "w", encoding="utf-8") as fh:

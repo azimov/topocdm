@@ -181,3 +181,68 @@ def test_multiple_periods_per_patient_do_not_inflate_the_cohort(fitted):
     _, _, T = pdm._person_windows(two, persons)
     expect = (365 * 2 + 365) / 365.25  # odd patients: 2020-2022; even: + 2023
     assert T.mean() == pytest.approx((expect + expect + 1.0) / 2, rel=0.02)
+
+
+def _counts_from_events(events, periods):
+    """The aggregates `db.count_events` would return for this extract."""
+    ev = events[events["domain"].isin(pdm.CLINICAL_DOMAINS) & (events["concept_id"] != 0)]
+    return (
+        ev.groupby(["domain", "concept_id"])
+        .agg(n_patients=("person_id", "nunique"), n_events=("person_id", "size"))
+        .reset_index()
+    )
+
+
+def test_count_path_matches_event_path(fitted):
+    """Aggregating the real side in SQL must not change the report (#5).
+
+    `db.count_events` computes patients and record totals in the warehouse so
+    a 100k-patient extract never has to be materialised in Python. The counts
+    carry everything prevalence and incidence use, so the two paths must
+    agree to the last digit.
+    """
+    fit, events, periods = fitted
+    counts = _counts_from_events(events, periods)
+
+    from_events = fidelity_report(fit, events, periods, n_draws=4, min_real_records=1)
+    from_counts = fidelity_report(
+        fit, None, periods, n_draws=4, min_real_records=1, real_counts=counts
+    )
+
+    for key in ("prev", "inc"):
+        a = from_events["concepts"][f"prevalence_{'real' if key == 'prev' else 'real'}"]
+        b = from_counts["concepts"][f"prevalence_{'real' if key == 'prev' else 'real'}"]
+        assert np.allclose(a, b)
+    for key in ("incidence_real", "prevalence_real", "prevalence_median", "incidence_median"):
+        assert np.allclose(from_events["concepts"][key], from_counts["concepts"][key]), key
+
+    assert from_events["n_patients_real"] == from_counts["n_patients_real"]
+    assert from_events["n_patients_synthetic"] == from_counts["n_patients_synthetic"]
+    assert from_events["n_concepts_scored"] == from_counts["n_concepts_scored"]
+    for key in from_events["coverage"]:
+        assert from_events["coverage"][key] == pytest.approx(from_counts["coverage"][key])
+    for name, bin_ev in from_events["bins"].items():
+        bin_ct = from_counts["bins"][name]
+        for key, val in bin_ev.items():
+            if isinstance(val, float):
+                # prevalence is a sparse-matrix mean on one path and an integer
+                # ratio on the other; differences are float noise, not logic
+                assert val == pytest.approx(bin_ct[key], abs=1e-9), (name, key)
+            else:
+                assert val == bin_ct[key], (name, key)
+
+
+def test_counts_need_events_for_held_out(fitted):
+    """Held-out selection cannot be done from aggregates alone."""
+    fit, events, periods = fitted
+    counts = _counts_from_events(events, periods)
+    with pytest.raises(ValueError, match="not separable by patient"):
+        fidelity_report(
+            fit, None, periods, n_draws=2, real_counts=counts, held_out_person_ids=[1, 2]
+        )
+
+
+def test_requires_events_or_counts(fitted):
+    fit, _events, periods = fitted
+    with pytest.raises(ValueError, match="pass either"):
+        fidelity_report(fit, None, periods, n_draws=2)

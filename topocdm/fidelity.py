@@ -77,7 +77,18 @@ def _matrix(records: pd.DataFrame, periods: pd.DataFrame, concept_ids: np.ndarra
 
 
 def _marginals(X, T):
-    prev = np.asarray((X > 0).mean(axis=0)).ravel()
+    """Prevalence and incidence per concept from a patient x concept matrix.
+
+    Prevalence is an integer count of patients divided by an integer number of
+    patients, not a float sum over a boolean matrix: the two give the same
+    number to ~1e-16, but coverage compares against an interval whose bounds
+    are themselves simulated medians, and a concept sitting exactly on a bound
+    flips in or out on that difference. Counting integers makes the event-frame
+    and the SQL-aggregate paths agree exactly (`_real_from_counts`).
+    """
+    n = X.shape[0]
+    patients_with = np.asarray((X > 0).sum(axis=0)).ravel().astype(np.int64)
+    prev = patients_with / max(n, 1)
     inc = np.asarray(X.sum(axis=0)).ravel() / max(T.sum(), 1e-9) * 1000.0
     return prev, inc
 
@@ -96,6 +107,33 @@ def _calib(y_real: np.ndarray, y_syn: np.ndarray) -> dict:
     }
 
 
+def _real_from_counts(
+    counts: pd.DataFrame, periods: pd.DataFrame, clinical_domains
+) -> tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray]:
+    """Real-side marginals from database aggregates, without event rows.
+
+    Equivalent to `_matrix` + `_marginals` on the raw extract, but takes the
+    `(concept_id, n_patients, n_events)` table that `db.count_events` returns.
+    Prevalence is patients-with-the-concept over patients observed; incidence
+    is records over total person-time.
+    """
+    persons = np.sort(periods["person_id"].unique())
+    n = len(persons)
+    _, _, T = pdm._person_windows(periods, persons)
+    c = counts[counts["domain"].isin(clinical_domains)]
+    c = c[c["concept_id"] != 0]
+    concept_ids = np.sort(c["concept_id"].unique())
+    if len(concept_ids) == 0:
+        raise ValueError("no mapped clinical concepts in the count table")
+    n_pat = c.groupby("concept_id")["n_patients"].sum().reindex(concept_ids)
+    n_ev = c.groupby("concept_id")["n_events"].sum().reindex(concept_ids)
+    # Same arithmetic as `_marginals`: integer patients over integer patients,
+    # so the two paths produce bit-identical prevalence.
+    prev = n_pat.to_numpy(np.int64) / max(n, 1)
+    inc = n_ev.to_numpy(np.int64) / max(T.sum(), 1e-9) * 1000.0
+    return prev, inc, concept_ids, n_ev.to_numpy(np.int64)
+
+
 def _draw_records(fit, sp: pd.DataFrame, *, seed: int, full_pipeline: bool) -> pd.DataFrame:
     """Draw one synthetic cohort as records.
 
@@ -112,7 +150,7 @@ def _draw_records(fit, sp: pd.DataFrame, *, seed: int, full_pipeline: bool) -> p
 
 def fidelity_report(
     fit,
-    events: pd.DataFrame,
+    events: pd.DataFrame | None,
     periods: pd.DataFrame,
     *,
     n_draws: int = 20,
@@ -121,12 +159,20 @@ def fidelity_report(
     min_real_records: int = MIN_REAL_RECORDS,
     full_pipeline: bool = False,
     progress=None,
+    real_counts: pd.DataFrame | None = None,
 ) -> dict:
     """Compare real prevalence/incidence against R generated cohorts.
 
     `events` and `periods` are the frames the fit was produced from. If
     `held_out_person_ids` is given, the real side is restricted to those
     patients; otherwise it is the whole extract.
+
+    Pass `real_counts` (from `db.count_events`) and `events=None` to score the
+    real side from database aggregates. The counts carry patients and record
+    totals per concept, which is everything prevalence and incidence need, so
+    a 100k-patient extract no longer has to be materialised in Python.
+    `held_out_person_ids` requires `events`, since the aggregates are not
+    separable by patient.
 
     `full_pipeline` builds the whole OMOP table set (eras included) via
     `generate_cohort` before counting. That exercises the era builder but costs
@@ -138,17 +184,39 @@ def fidelity_report(
     """
     if n_draws < 2:
         raise ValueError("n_draws must be >= 2 to form a simulation interval")
+    if real_counts is None and events is None:
+        raise ValueError("pass either `events` or `real_counts`")
+    if real_counts is not None and held_out_person_ids is not None:
+        raise ValueError(
+            "held_out_person_ids needs `events`; the aggregate counts are not separable by patient"
+        )
 
     real_events, real_periods = events, periods
     if held_out_person_ids is not None:
+        assert events is not None
         keep = np.asarray(held_out_person_ids)
         real_events = events[events["person_id"].isin(keep)].copy()
         real_periods = periods[periods["person_id"].isin(keep)].copy()
         if real_periods["person_id"].nunique() == 0:
             raise ValueError("held-out set contains no patients")
 
-    X_real, concept_ids, persons, T_real = pdm.clinical_incidence(real_events, real_periods)
-    prev_real, inc_real = _marginals(X_real, T_real)
+    X_real = None
+    support: np.ndarray | None = None
+    if real_counts is not None:
+        prev_real, inc_real, concept_ids, real_events_per = _real_from_counts(
+            real_counts, real_periods, pdm.CLINICAL_DOMAINS
+        )
+        persons = np.sort(real_periods["person_id"].unique())
+        support = real_events_per > min_real_records
+        if support.sum() < 1:
+            raise ValueError(
+                f"no concepts with more than {min_real_records} real records; "
+                "cannot form a fidelity report"
+            )
+    else:
+        assert real_events is not None
+        X_real, concept_ids, persons, T_real = pdm.clinical_incidence(real_events, real_periods)
+        prev_real, inc_real = _marginals(X_real, T_real)
 
     prev_draws, inc_draws = [], []
     n_synthetic = 0
@@ -174,12 +242,14 @@ def fidelity_report(
     plo, pmid, phi = np.percentile(P, [5, 50, 95], axis=0)
     ilo, imid, ihi = np.percentile(inc_d, [5, 50, 95], axis=0)
 
-    support = np.asarray(X_real.sum(axis=0)).ravel() > min_real_records
-    if support.sum() < 1:
-        raise ValueError(
-            f"no concepts with more than {min_real_records} real records; "
-            "cannot form a fidelity report"
-        )
+    if support is None:
+        assert X_real is not None
+        support = np.asarray(X_real.sum(axis=0)).ravel() > min_real_records
+        if support.sum() < 1:
+            raise ValueError(
+                f"no concepts with more than {min_real_records} real records; "
+                "cannot form a fidelity report"
+            )
 
     def _bins() -> dict[str, dict]:
         out: dict[str, dict] = {}
