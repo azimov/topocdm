@@ -13,6 +13,15 @@ dist/
 data/
 .cache/
 
+# fidelity reports off a real CDM: they list concept ids with per-concept
+# prevalence, including concepts seen in a single patient, so they fingerprint
+# the source database. Regenerate locally; never commit. (Per-domain/visit
+# fixtures in results/ are synthetic and stay tracked.)
+results/*_fidelity.json
+results/*_fidelity.png
+results/databricks_fit*.json
+results/databricks_fit*.pkl
+
 # third-party checkout (CiGRAM is GPL-3; see README)
 src/cigram/
 
