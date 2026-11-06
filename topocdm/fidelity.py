@@ -52,7 +52,14 @@ COVERAGE_FLOOR = 0.90
 
 
 def _matrix(records: pd.DataFrame, periods: pd.DataFrame, concept_ids: np.ndarray):
-    """(N, C) count matrix and person-years, on a fixed concept vocabulary."""
+    """(N, C) count matrix and person-years, on a fixed concept vocabulary.
+
+    `N` is patients, not period rows: a CDM may have several observation
+    periods per person, and both sides of the comparison must collapse them
+    the same way. Person-time comes from `_person_windows`, which totals the
+    period durations per person -- dividing by period rows instead would
+    inflate the denominator and let a patient appear as several observations.
+    """
     persons = np.sort(periods["person_id"].unique())
     prow = {int(p): i for i, p in enumerate(persons)}
     ccol = {int(c): j for j, c in enumerate(concept_ids)}
@@ -65,8 +72,8 @@ def _matrix(records: pd.DataFrame, periods: pd.DataFrame, concept_ids: np.ndarra
         shape=(len(persons), len(concept_ids)),
     )
     X.sum_duplicates()
-    T = (periods["end_date"] - periods["start_date"]).dt.days.to_numpy(float) / 365.25
-    return X, np.maximum(T, 1 / 365.25)
+    _, _, T = pdm._person_windows(periods, persons)
+    return X, T
 
 
 def _marginals(X, T):
@@ -148,7 +155,10 @@ def fidelity_report(
     t_draws = time.time()
     for r in range(n_draws):
         rng = np.random.default_rng(seed + r)
-        sp = pdm.sample_periods(real_periods, len(real_periods), rng)
+        # Size the synthetic cohort by patients, not period rows: a patient may
+        # have several observation periods, so len(real_periods) can exceed the
+        # patient count and would inflate synthetic prevalence by that factor.
+        sp = pdm.sample_periods(real_periods, len(persons), rng)
         n_synthetic = int(len(sp))
         rec = _draw_records(fit, sp, seed=seed + 10_000 + r, full_pipeline=full_pipeline)
         X_s, T_s = _matrix(rec, sp, concept_ids)

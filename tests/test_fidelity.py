@@ -152,3 +152,32 @@ def test_progress_callback_is_called(fitted):
         progress=lambda done, total, elapsed: seen.append((done, total)),
     )
     assert seen == [(1, 3), (2, 3), (3, 3)]
+
+
+def test_multiple_periods_per_patient_do_not_inflate_the_cohort(fitted):
+    """A patient with two observation periods is still one patient (#4).
+
+    Sizing the synthetic cohort by period rows rather than unique patients made
+    every draw 1.55x too large on a real extract, inflating synthetic
+    prevalence by the same factor. Person-time must also be totalled per
+    person, not per period row, or the incidence denominator is wrong too.
+    """
+    events, periods = _cohort()
+    # give every other patient a second, disjoint observation period
+    second = periods[periods["person_id"] % 2 == 0].copy()
+    second["start_date"] = pd.Timestamp("2023-01-01")
+    second["end_date"] = pd.Timestamp("2023-12-31")
+    two = pd.concat([periods, second], ignore_index=True)
+    assert len(two) > two["person_id"].nunique()  # the shape that broke it
+
+    fit = pdm.fit_perdomain(events, periods, K=3)
+    rep = fidelity_report(fit, events, two, n_draws=3, min_real_records=1)
+
+    assert rep["n_patients_real"] == two["person_id"].nunique()
+    assert rep["n_patients_synthetic"] == rep["n_patients_real"]
+
+    # real person-time is the period total, not one year per period row
+    persons = np.sort(two["person_id"].unique())
+    _, _, T = pdm._person_windows(two, persons)
+    expect = (365 * 2 + 365) / 365.25  # odd patients: 2020-2022; even: + 2023
+    assert T.mean() == pytest.approx((expect + expect + 1.0) / 2, rel=0.02)
