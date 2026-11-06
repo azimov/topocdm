@@ -101,7 +101,7 @@ override the card. Do not commit the card or the token.
 ## Verify the install
 
 ```bash
-MPLCONFIGDIR=./.mplconfig .venv/bin/python -m pytest -q          # 28 passed
+MPLCONFIGDIR=./.mplconfig .venv/bin/python -m pytest -q   # unit tests; integration skips
 .venv/bin/python scripts/fit_databricks.py \
   --cmd mycdm_version --n-patients 10000 --dry-run | head
 ```
@@ -110,6 +110,11 @@ The dry run prints the Spark SQL without connecting: a
 `create or replace table <results_schema>.topocdm_sample_...` that writes the
 sample to your scratch schema, and a `join ... using (person_id)` in every
 domain branch. It does not read or write anything.
+
+## Tests
+
+Unit tests need nothing. The live Postgres and Databricks tests, the local
+`demo_cdm` command, and the CI fixture are in [docs/TESTING.md](TESTING.md).
 
 ## First fit
 

@@ -3,6 +3,8 @@
 A fixed-density generative model of an OMOP CDM, with a likelihood.
 
 > **Fresh machine?** Run `bash scripts/setup_work_laptop.sh` (macOS/Linux) and see [docs/SETUP.md](docs/SETUP.md). The Databricks path needs no Docker, Postgres or Synthea data.
+>
+> **Tests:** `pytest -q` for the unit suite; the live Postgres and Databricks tests are in [docs/TESTING.md](docs/TESTING.md).
 
 `topocdm` fits a topology model to a patient × concept incidence matrix and
 generates synthetic CDMs from it. The same fitted object is used two ways:

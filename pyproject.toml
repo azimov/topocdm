@@ -17,7 +17,11 @@ dependencies = [
 ]
 
 [project.optional-dependencies]
-dev = ["pytest>=7", "matplotlib>=3.7"]
+dev = ["pytest>=7", "matplotlib>=3.7", "ruff>=0.4"]
+test = [
+    "psycopg[binary]>=3.1",
+    "PyYAML>=6.0",
+]
 databricks = [
     "PyYAML>=6.0",
     "databricks-sql-connector[pyarrow]>=3.0",
@@ -26,5 +30,16 @@ databricks = [
 [tool.setuptools]
 packages = ["topocdm"]
 
+[tool.ruff]
+line-length = 100
+exclude = [".venv", "data", "results", "figs", ".mplconfig"]
+
+[tool.ruff.lint]
+select = ["E9", "F63", "F7", "F82"]
+
 [tool.pytest.ini_options]
 testpaths = ["tests"]
+markers = [
+    "integration: needs a live OMOP CDM; set CDM_DSN",
+    "databricks: needs a live Databricks warehouse and connection card",
+]
