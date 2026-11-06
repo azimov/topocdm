@@ -147,6 +147,20 @@ def main(argv=None):
     ap.add_argument("--token", default=None)
     ap.add_argument("--out", default="results/databricks_fit.pkl")
     ap.add_argument("--summary", default="results/databricks_fit.json")
+    ap.add_argument(
+        "--fidelity",
+        default=None,
+        help="write a prevalence/incidence fidelity report here (JSON); "
+        "default: alongside --summary, or 'none' to skip",
+    )
+    ap.add_argument(
+        "--fidelity-draws", type=int, default=20, help="synthetic cohorts in the report"
+    )
+    ap.add_argument(
+        "--fidelity-figure",
+        default=None,
+        help="also write a two-panel PNG of prevalence and incidence",
+    )
     ap.add_argument("--dry-run", action="store_true", help="print the SQL and exit; no connection")
     args = ap.parse_args(argv)
 
@@ -173,7 +187,7 @@ def main(argv=None):
         backend = db.DuckDBBackend(args.duckdb)
 
     try:
-        fit, summary = db.run_fit(
+        fit, summary, events, periods = db.run_fit(
             backend,
             cdm,
             results,
@@ -185,6 +199,7 @@ def main(argv=None):
             cmd=cmd_name,
             out=args.out,
             summary_path=args.summary,
+            return_data=True,
         )
     finally:
         backend.close()
@@ -200,7 +215,106 @@ def main(argv=None):
         f"K={summary['K']}"
     )
     print(f"wrote {args.out} and {args.summary}")
+
+    if args.fidelity is not None and args.fidelity.lower() != "none":
+        _write_fidelity(args, fit, events, periods)
     return 0
+
+
+def _write_fidelity(args, fit, events, periods):
+    """Score prevalence/incidence against the data the fit was produced from."""
+    import json
+
+    from topocdm import fidelity
+
+    path = args.fidelity
+    if path is None:
+        base = os.path.splitext(args.summary)[0]
+        path = f"{base}_fidelity.json"
+
+    print()
+    print(f"fidelity: generating {args.fidelity_draws} synthetic cohorts ...")
+    t0 = time.time()
+    rep = fidelity.fidelity_report(
+        fit,
+        events,
+        periods,
+        n_draws=args.fidelity_draws,
+        seed=args.seed,
+    )
+    os.makedirs(os.path.dirname(path) or ".", exist_ok=True)
+    with open(path, "w", encoding="utf-8") as fh:
+        json.dump(rep, fh, indent=1)
+
+    cov = rep["coverage"]
+    print(
+        f"  scored {rep['n_concepts_scored']:,} of {rep['n_concepts']:,} concepts "
+        f"on {rep['n_patients_real']:,} patients ({time.time() - t0:.1f}s)"
+    )
+    print(
+        f"  prevalence coverage {cov['prevalence']:.0%}   incidence coverage {cov['incidence']:.0%}"
+    )
+    for name, b in rep["bins"].items():
+        if b.get("n"):
+            print(
+                f"    {name:14s} n={b['n']:4d}  "
+                f"P cov {b['prevalence_coverage']:5.0%}  "
+                f"P ratio {b['prevalence_ratio_median']:5.2f}  "
+                f"(over {b['prevalence_over']}, under {b['prevalence_under']})"
+            )
+    g = rep["gates"]
+    verdict = "PASS" if g["passes_pooled"] and g["passes_common_bin"] else "FAIL"
+    print(f"  gate: {verdict} (floor {g['coverage_floor']:.0%})")
+    print(f"wrote {path}")
+
+    if args.fidelity_figure:
+        _plot_fidelity(rep, args.fidelity_figure)
+
+
+def _plot_fidelity(rep, path):
+    """Two panels: prevalence and incidence, real against the 5-95% band."""
+    import matplotlib
+
+    matplotlib.use("Agg")
+    import matplotlib.pyplot as plt
+    import numpy as np
+
+    c = rep["concepts"]
+    sup = np.array(c["supported"])
+    order = np.argsort(-np.array(c["prevalence_real"]))
+    order = order[sup[order]]
+    idx = np.arange(len(order))
+    pv = np.array(c["prevalence_real"])[order]
+    pm, plo, phi = (
+        np.array(c[k])[order] for k in ("prevalence_median", "prevalence_lo", "prevalence_hi")
+    )
+    iv = np.array(c["incidence_real"])[order]
+    im, ilo, ihi = (
+        np.array(c[k])[order] for k in ("incidence_median", "incidence_lo", "incidence_hi")
+    )
+
+    fig, axes = plt.subplots(2, 1, figsize=(9, 7), sharex=True)
+    for ax, real, med, lo, hi, label, scale in [
+        (axes[0], pv, pm, plo, phi, "prevalence", 1.0),
+        (axes[1], iv, im, ilo, ihi, "incidence per 1000 PY", 1.0),
+    ]:
+        ax.fill_between(idx, lo * scale, hi * scale, color="#2C6E9B", alpha=0.25, label="5-95% syn")
+        ax.plot(idx, med * scale, color="#2C6E9B", lw=1.2, label="synthetic median")
+        ax.plot(idx, real, color="#1f2933", lw=1.0, label="real")
+        ax.set_ylabel(label)
+        ax.grid(alpha=0.2)
+        ax.spines[["top", "right"]].set_visible(False)
+    axes[0].legend(fontsize=8, frameon=False)
+    axes[0].set_title(
+        f"Fidelity: {rep['n_concepts_scored']:,} concepts, "
+        f"{rep['n_patients_real']:,} patients, {rep['n_draws']} draws"
+    )
+    axes[1].set_xlabel("concept rank (by real prevalence)")
+    fig.tight_layout()
+    os.makedirs(os.path.dirname(path) or ".", exist_ok=True)
+    fig.savefig(path, dpi=160)
+    plt.close(fig)
+    print(f"wrote {path}")
 
 
 if __name__ == "__main__":

@@ -328,12 +328,18 @@ def run_fit(
     cmd: str = "",
     out: str | None = None,
     summary_path: str | None = None,
+    return_data: bool = False,
 ):
     """The one pipeline: sample -> extract -> fit -> save.
 
     This is the function the Databricks CLI calls, and the function the
     Postgres and DuckDB integration tests call. There is no second copy of the
     extraction or fit logic.
+
+    With `return_data=True` the extracted `(events, periods)` are returned
+    alongside the fit, so a caller can score fidelity without a second
+    warehouse round-trip. That is the only way to compare against the *same*
+    data the fit saw.
     """
     events, periods, table = extract_sample(backend, cdm, results, n_patients, seed, keep_scratch)
     fit = pdm.fit_perdomain(events, periods, K=k, max_patients=max_patients)
@@ -356,4 +362,6 @@ def run_fit(
         os.makedirs(os.path.dirname(summary_path) or ".", exist_ok=True)
         with open(summary_path, "w") as fh:
             json.dump(summary, fh, indent=1)
+    if return_data:
+        return fit, summary, events, periods
     return fit, summary
