@@ -5,6 +5,8 @@ A fixed-density generative model of an OMOP CDM, with a likelihood.
 > **Fresh machine?** Run `bash scripts/setup_work_laptop.sh` (macOS/Linux) and see [docs/SETUP.md](docs/SETUP.md). The Databricks path needs no Docker, Postgres or Synthea data.
 >
 > **Tests:** `pytest -q` for the unit suite; the live Postgres and Databricks tests are in [docs/TESTING.md](docs/TESTING.md).
+>
+> **Agents:** read [AGENTS.md](AGENTS.md) for the repository map, commands, invariants and current known issues.
 
 `topocdm` fits a topology model to a patient × concept incidence matrix and
 generates synthetic CDMs from it. The same fitted object is used two ways:
@@ -53,19 +55,24 @@ from topocdm.release import make_release, sample_release
 from topocdm.omop import ConceptVocab, generate_omop_tables
 
 data, truth = simulate_sparse(n=200_000, c=1000)
-fit = fit_streaming(array_chunks(data, chunk_size=5000, sample_frac=0.25),
-                    n=data.n, c=data.c, concept_group=data.concept_group,
-                    n_groups=5)
-release = make_release(fit.params, data.concept_ids, data.concept_group,
-                       propensity_shape=k, density=data.density)
-synth = sample_release(release, n_patients=10_000, density=8.0)   # density is a knob
+fit = fit_streaming(
+    array_chunks(data, chunk_size=5000, sample_frac=0.25),
+    n=data.n,
+    c=data.c,
+    concept_group=data.concept_group,
+    n_groups=5,
+)
+release = make_release(
+    fit.params, data.concept_ids, data.concept_group, propensity_shape=k, density=data.density
+)
+synth = sample_release(release, n_patients=10_000, density=8.0)  # density is a knob
 tables = generate_omop_tables(synth.X.toarray(), synth.T, vocab)
 ```
 
 ```python
 import topocdm as t
 
-data, truth = t.simulate(t.SimConfig(n=4000, c=60, seed=0))   # or load a real CDM
+data, truth = t.simulate(t.SimConfig(n=4000, c=60, seed=0))  # or load a real CDM
 fit = t.fit(data, n_patient_groups=4, n_restarts=3)
 print(t.aic_mixture(fit.params, data), t.bic_mixture(fit.params, data))
 
