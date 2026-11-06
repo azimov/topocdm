@@ -22,8 +22,21 @@ src/cigram/
 # credentials and local connection details
 .secrets/
 
-# compiled kernel (build with scripts/build_fast.sh)
+# compiled kernel (built by setup.py / scripts/build_fast.sh)
 topocdm/_fast.so
+topocdm/_fast*.so
+topocdm/_fast*.dylib
+topocdm/_fast*.dll
+topocdm/_fast*.pyd
+
+# coverage / type-check caches
+.coverage
+.coverage.*
+coverage.xml
+htmlcov/
+.mypy_cache/
+.tox/
+
 # extracted CDM data
 
 # R artefacts
@@ -33,3 +46,12 @@ topocdm/_fast.so
 # release artefacts
 topocdm-*.tar.gz
 topocdm-*.bundle
+
+# local research notes and agent handoff context (kept on disk, not published)
+BRIEFING.md
+HANDOFF.md
+HANDOFF_PROMPT.md
+MODEL_AND_READING.md
+PROGRAMME.md
+REPORT.md
+WHERE_THIS_STANDS.md

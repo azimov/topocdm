@@ -179,7 +179,7 @@ simulated but not scored will always look adequate.
 - **No real CDM has been fitted.** All results are on simulated data with known
   truth. The immediate next step is fitting an OMOP instance and checking that
   the observation model reproduces its visit and channel structure.
-- **No channels.** `PROGRAMME.md` argues that ascertainment is channel-specific
+- **No channels.** The programme notes argue that ascertainment is channel-specific
   (examination vs laboratory vs prescribing) and that this is what breaks
   negative-control calibration. The current model has one implicit channel.
   Extending it means `mu_ij = T_i u_i sum_c lambda_jc D_ic` with a per-patient

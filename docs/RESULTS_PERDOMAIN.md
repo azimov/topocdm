@@ -1,6 +1,6 @@
 # Re-extraction, the per-domain model, and the negative-control answer
 
-*What was done, what the numbers are, and what it does to the five claims. Written to be read against [`MODEL_V2.md`](MODEL_V2.md) and [`WHERE_THIS_STANDS.md`](../WHERE_THIS_STANDS.md).*
+*What was done, what the numbers are, and what it does to the five claims. Written to be read against [`MODEL_V2.md`](MODEL_V2.md) and [`FIDELITY_REPORT.md`](FIDELITY_REPORT.md).*
 
 ---
 

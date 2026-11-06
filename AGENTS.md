@@ -7,10 +7,10 @@ changing the model or the database path.
 
 `topocdm` is a research prototype: a fixed-density generative model of an OMOP
 CDM, with a likelihood. It fits global parameters and generates synthetic CDMs.
-The current state is documented in `WHERE_THIS_STANDS.md`; the model fits the
-marginals and incidence, but per-concept prevalence (especially the common bin)
-and the subject-graph spectrum are not solved. Do not describe it as validated
-on a production CDM.
+The current state is documented in `docs/FIDELITY_REPORT.md` and
+`docs/SUBJECT_SPECTRA.md`; the model fits the marginals and incidence, but
+per-concept prevalence (especially the common bin) and the subject-graph
+spectrum are not solved. Do not describe it as validated on a production CDM.
 
 ## Quick start
 
@@ -21,15 +21,19 @@ python3 -m venv .venv
 
 .venv/bin/pytest -q          # unit + DuckDB; Postgres/Databricks skip
 .venv/bin/ruff check .
+.venv/bin/ruff format --check .
+.venv/bin/mypy topocdm
 ```
 
 The C kernel is optional:
 
 ```bash
-CC=clang bash scripts/build_fast.sh      # or CC=gcc
+python setup.py build_ext --inplace      # or: bash scripts/build_fast.sh
 ```
 
-The Python kernel must remain correct; tests must pass without `_fast.so`.
+The Python kernel must remain correct; tests must pass without `_fast*.so`.
+`topocdm.fast` finds the library by platform suffix, so the build may land as
+`_fast.cpython-311-darwin.so`, `_fast.so`, or `_fast.pyd`.
 
 ## Repository map
 
@@ -101,12 +105,28 @@ CDM_SCHEMA=cdm CDM_RESULTS_SCHEMA=public \
 add a regression to `tests/test_databricks_config.py` and run the DuckDB and
 Postgres integration tests.
 
+## Quality gates
+
+CI runs these four; run them locally before pushing:
+
+```bash
+.venv/bin/ruff check .             # E, F, I, UP, B, C4, SIM
+.venv/bin/ruff format --check .    # formatting
+.venv/bin/mypy topocdm             # types (py.typed shipped)
+.venv/bin/pytest -q                # unit + in-process DuckDB
+```
+
+`pytest` enforces a coverage floor from `pyproject.toml`; use `--no-cov` when
+running a single test file. `tox` reproduces the full 3.10–3.14 matrix.
+
 ## Working agreement
 
 - Keep the pipeline in `db.py`; do not add a second extraction or fit path.
 - Add a test for every bug fix. The multiple-period bug (#1) and the sample
   count display bug both had tests added after the fact.
-- Run `ruff check .` and `pytest -q` before committing.
+- Run `ruff check .`, `ruff format --check .`, `mypy topocdm` and `pytest -q`
+  before committing.
+- Keep mechanical lint/format changes in a separate commit from behaviour.
 - Update `docs/FIDELITY_REPORT.md` if the model or the sample changes.
 - Do not publish credentials, drafts or data. The public repository must not
   contain a connection card or a `.secrets/` directory.
@@ -123,5 +143,4 @@ Postgres integration tests.
 
 `docs/MODEL_V2.md` (spec), `docs/FIDELITY_REPORT.md` (current numbers),
 `docs/DATABRICKS.md` (connection card, backends, sample), `docs/TESTING.md`
-(test tiers), `WHERE_THIS_STANDS.md` (claim grades), `HANDOFF.md` (project
-context).
+(test tiers), `docs/SUBJECT_SPECTRA.md` (subject-graph spectra).

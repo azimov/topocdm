@@ -6,6 +6,8 @@ A fixed-density generative model of an OMOP CDM, with a likelihood.
 >
 > **Tests:** `pytest -q` for the unit suite; the live Postgres and Databricks tests are in [docs/TESTING.md](docs/TESTING.md).
 >
+> **Contributing:** run `ruff check .`, `ruff format --check .`, `mypy topocdm` and `pytest -q` before a PR; see [CONTRIBUTING.md](CONTRIBUTING.md).
+>
 > **Agents:** read [AGENTS.md](AGENTS.md) for the repository map, commands, invariants and current known issues.
 
 `topocdm` fits a topology model to a patient × concept incidence matrix and
@@ -154,15 +156,30 @@ explore/          earlier exploratory work (CiGRAM probes, bias demos)
 figs/, results/   generated output
 ```
 
-`explore/` contains the probes behind `REPORT.md` and `PROGRAMME.md`; it is not
-part of the library.
+`explore/` contains the earlier exploratory probes (CiGRAM, bias demos); it is
+not part of the library.
 
 ## Install
 
-```
+```bash
 python -m venv .venv
-.venv/bin/pip install -e ".[dev]"
-.venv/bin/python -m pytest tests -q
+.venv/bin/pip install -e ".[dev,test]"
+
+# optional: the C likelihood kernel (the pure-Python kernel always works)
+.venv/bin/python setup.py build_ext --inplace
+
+# quality gates
+.venv/bin/ruff check . && .venv/bin/ruff format --check .
+.venv/bin/mypy topocdm
+MPLCONFIGDIR=./.mplconfig .venv/bin/python -m pytest -q
+```
+
+`pytest` covers the unit suite plus the in-process DuckDB database test. The
+optional C kernel is portable: `setup.py` builds it with the platform compiler
+and `topocdm.fast` loads it by suffix (`.so`, `.dylib`, `.pyd`), falling back to
+NumPy when it is absent.
+
+```bash
 MPLCONFIGDIR=./.mplconfig .venv/bin/python experiments/02_validate.py
 ```
 
