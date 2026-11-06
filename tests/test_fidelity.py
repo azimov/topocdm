@@ -120,3 +120,35 @@ def test_too_few_draws_is_rejected(fitted):
     fit, events, periods = fitted
     with pytest.raises(ValueError, match="n_draws"):
         fidelity_report(fit, events, periods, n_draws=1)
+
+
+def test_fast_path_matches_full_pipeline(fitted):
+    """Skipping the era build must not change prevalence or incidence.
+
+    Era merging only re-dates and merges intervals; it cannot add or remove a
+    (patient, concept) presence. The fast path is what makes a 1M-patient
+    report tractable, so it has to agree with the full one exactly.
+    """
+    fit, events, periods = fitted
+    fast = fidelity_report(fit, events, periods, n_draws=3, min_real_records=1)
+    full = fidelity_report(fit, events, periods, n_draws=3, min_real_records=1, full_pipeline=True)
+
+    for key in ("prevalence_median", "incidence_median"):
+        assert np.allclose(fast["concepts"][key], full["concepts"][key])
+    assert fast["coverage"] == full["coverage"]
+    assert fast["full_pipeline"] is False
+    assert full["full_pipeline"] is True
+
+
+def test_progress_callback_is_called(fitted):
+    fit, events, periods = fitted
+    seen = []
+    fidelity_report(
+        fit,
+        events,
+        periods,
+        n_draws=3,
+        min_real_records=1,
+        progress=lambda done, total, elapsed: seen.append((done, total)),
+    )
+    assert seen == [(1, 3), (2, 3), (3, 3)]

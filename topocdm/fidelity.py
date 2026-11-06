@@ -28,6 +28,8 @@ which is the object the per-domain model is fitted to.
 
 from __future__ import annotations
 
+import time
+
 import numpy as np
 import pandas as pd
 from scipy import sparse
@@ -87,6 +89,20 @@ def _calib(y_real: np.ndarray, y_syn: np.ndarray) -> dict:
     }
 
 
+def _draw_records(fit, sp: pd.DataFrame, *, seed: int, full_pipeline: bool) -> pd.DataFrame:
+    """Draw one synthetic cohort as records.
+
+    The fast path samples events directly and skips the OMOP table build. The
+    full path goes through `generate_cohort`, which additionally constructs the
+    era tables.
+    """
+    if full_pipeline:
+        tables = pdm.generate_cohort(fit, len(sp), sp, seed=seed)
+        return pdm.tables_to_records(tables)
+    events, _death = pdm._generate_events(fit, sp, np.random.default_rng(seed))
+    return events
+
+
 def fidelity_report(
     fit,
     events: pd.DataFrame,
@@ -96,12 +112,22 @@ def fidelity_report(
     held_out_person_ids=None,
     seed: int = 0,
     min_real_records: int = MIN_REAL_RECORDS,
+    full_pipeline: bool = False,
+    progress=None,
 ) -> dict:
     """Compare real prevalence/incidence against R generated cohorts.
 
     `events` and `periods` are the frames the fit was produced from. If
     `held_out_person_ids` is given, the real side is restricted to those
     patients; otherwise it is the whole extract.
+
+    `full_pipeline` builds the whole OMOP table set (eras included) via
+    `generate_cohort` before counting. That exercises the era builder but costs
+    roughly 8x more time: on a 10k-patient cohort the era construction alone is
+    ~89% of a draw. Prevalence and incidence are computed from raw records, and
+    era merging cannot change them, so the default skips it.
+
+    `progress(done, total, elapsed_seconds)` is called after each draw.
     """
     if n_draws < 2:
         raise ValueError("n_draws must be >= 2 to form a simulation interval")
@@ -119,16 +145,19 @@ def fidelity_report(
 
     prev_draws, inc_draws = [], []
     n_synthetic = 0
+    t_draws = time.time()
     for r in range(n_draws):
         rng = np.random.default_rng(seed + r)
         sp = pdm.sample_periods(real_periods, len(real_periods), rng)
-        tables = pdm.generate_cohort(fit, len(sp), sp, seed=seed + 10_000 + r)
         n_synthetic = int(len(sp))
-        rec = pdm.tables_to_records(tables)
+        rec = _draw_records(fit, sp, seed=seed + 10_000 + r, full_pipeline=full_pipeline)
         X_s, T_s = _matrix(rec, sp, concept_ids)
         p, i = _marginals(X_s, T_s)
         prev_draws.append(p)
         inc_draws.append(i)
+        if progress is not None:
+            progress(r + 1, n_draws, time.time() - t_draws)
+    t_draws = time.time() - t_draws
 
     P = np.vstack(prev_draws)
     inc_d = np.vstack(inc_draws)
@@ -186,6 +215,8 @@ def fidelity_report(
     return {
         "n_draws": n_draws,
         "seed": seed,
+        "full_pipeline": bool(full_pipeline),
+        "draw_seconds": float(t_draws),
         "n_patients_real": int(len(persons)),
         "n_patients_synthetic": int(n_synthetic),
         "n_concepts": int(len(concept_ids)),

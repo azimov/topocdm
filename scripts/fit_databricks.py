@@ -161,6 +161,12 @@ def main(argv=None):
         default=None,
         help="also write a two-panel PNG of prevalence and incidence",
     )
+    ap.add_argument(
+        "--fidelity-full",
+        action="store_true",
+        help="build the full OMOP tables (eras included) per draw; ~8x slower and "
+        "cannot change prevalence or incidence",
+    )
     ap.add_argument("--dry-run", action="store_true", help="print the SQL and exit; no connection")
     args = ap.parse_args(argv)
 
@@ -234,6 +240,15 @@ def _write_fidelity(args, fit, events, periods):
 
     print()
     print(f"fidelity: generating {args.fidelity_draws} synthetic cohorts ...")
+
+    def _progress(done, total, elapsed):
+        rate = elapsed / max(done, 1)
+        print(
+            f"  draw {done}/{total}  {rate:5.1f}s each  "
+            f"elapsed {elapsed:5.0f}s  eta {rate * (total - done):5.0f}s",
+            flush=True,
+        )
+
     t0 = time.time()
     rep = fidelity.fidelity_report(
         fit,
@@ -241,6 +256,8 @@ def _write_fidelity(args, fit, events, periods):
         periods,
         n_draws=args.fidelity_draws,
         seed=args.seed,
+        full_pipeline=args.fidelity_full,
+        progress=_progress,
     )
     os.makedirs(os.path.dirname(path) or ".", exist_ok=True)
     with open(path, "w", encoding="utf-8") as fh:
