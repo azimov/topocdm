@@ -63,6 +63,14 @@ rejected `WITH ... AS MATERIALIZED`; do not reintroduce it.
 
 ## Invariants and traps
 
+- **Aggregate in the database, not in the client.** Never stream a large object
+  to Python if a `group by` will do; the engine is the only component that can
+  scan a fact table without materialising it. Ask of every new CDM touch point:
+  *could this be an aggregate?* Rows are a last resort and must be bounded
+  (the coupling fit takes at most 5,000 patients). The client-side and
+  SQL-side paths must agree bit-for-bit — count integers and divide once, or
+  they differ by ~1e-16 and coverage flips on interval bounds. See
+  `docs/DESIGN.md` §9.1 and `db.COUNT_EVENTS`.
 - **`K` vs `k`.** `--k` / `K` is the coupling rank. `fit.k` is the Gamma shape
   of the patient propensity. They are different parameters.
 - **The sample is patients, not period rows.** `--n-patients` is unique people.

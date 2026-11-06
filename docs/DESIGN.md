@@ -228,8 +228,64 @@ Three consequences worth stating:
   point for the stream. This also means initialisation and refinement share one
   code path.
 
-## 10. Density is a generator parameter, not a fit output
+### 9.1 Let the database do the aggregation
 
+The corollary for every consumer of a CDM, not just the fit:
+
+> **Never stream a large object to the client if an aggregate will do.**
+
+The database engine is the only component that can scan a fact table without
+materialising it. Anything a client pulls across the wire is — by definition —
+already in memory on the wrong machine. At 10,000 patients the event frame for
+one Synthea extract is 5.76M rows; at 100,000 it is ~24M rows and several
+gigabytes, and the fidelity report that needed it was doing nothing with it
+that SQL could not do in one pass.
+
+The rule, in the form it should be applied:
+
+1. **Ask what the consumer actually uses.** The fidelity report needs, per
+   concept, the number of distinct patients and the number of records. That is
+   `group by domain, concept_id` — 778 rows against 5.76M, a factor of 7,400.
+   `fit_durations` needs a zero fraction and 101 quantiles, not every interval.
+   `lam_t` needs events per domain-year, which is one row per domain per year.
+2. **Reduce in the engine, then transfer.** The Python side receives O(C) or
+   O(C × years) numbers. A temp or permanent table in the results schema is the
+   right intermediate when the reduction has more than one step; there is no
+   need to return a wide join to the client just to break it up in pandas.
+3. **When a per-row pass is genuinely required, bound it first.** The coupling
+   fit is the one place that wants rows rather than counts, and it already
+   takes at most 5,000 patients. That is a bounded sample, not the database.
+   Sample by the same deterministic patient hash the rest of the pipeline uses,
+   so the sample is stable and reproducible.
+4. **Map-reduce the updates, not the data.** A fit that needs sufficient
+   statistics per chunk can reduce them in SQL and combine on the client: the
+   marginal layer needs only `rowsum`, `colsum` and `T`, all of which are
+   group-bys. Fitting on a bounded sample and correcting the level from
+   population aggregates is exact for the quantities the release publishes,
+   because no released parameter is per-patient (see §9).
+5. **Keep the two paths bit-identical.** A client-side and a SQL-side
+   implementation of the same statistic must agree to the last digit, not
+   approximately. They will not, by accident: `(X > 0).mean()` over a sparse
+   matrix and a ratio of two integers differ by ~1e-16, and a coverage test
+   against an interval whose bound *is* that value flips on the difference.
+   Count integers and divide once, in both paths.
+6. **Every aggregate must describe the same cohort.** Moving work into SQL
+   introduces a new failure mode: two queries that each look right but cover
+   different patient sets. A capped fit sample (`fit_patients`) plus uncapped
+   counts gives you one cohort's records over another cohort's person-time,
+   which doubled real incidence and drove coverage to zero while every
+   individual number looked plausible. The cohort has to be explicit — pass the
+   person ids the extract used, or take every aggregate over the same sample
+   table — and the reported `n_patients_real` should equal the count of the
+   cohort the fit saw.
+
+The failure this prevents is not slowness, it is a hard stop: a client-side
+materialisation that works at 10k patients fails outright at 100k, and it fails
+on the machine that has the least memory rather than the one that has the data.
+Every place this codebase touches a CDM should be checkable against the rule,
+and the check is a single question — *could this be a `group by`?*
+
+## 10. Density is a generator parameter, not a fit output
 Fitting estimates the observed density (events per person-year). Generation
 takes a density and allocates `M = density * sum(T)` events multinomially, which
 is what fixed density means. The same release therefore produces a sparse or a
