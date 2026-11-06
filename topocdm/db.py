@@ -267,6 +267,12 @@ def extract_sample(backend: Backend, cdm: str, results: str,
         for col in ("start_date", "end_date"):
             if col in df.columns:
                 df[col] = pd.to_datetime(df[col])
+
+    n_unique = int(periods["person_id"].nunique())
+    if n_patients is not None and n_unique > int(n_patients):
+        raise RuntimeError(
+            f"sample returned {n_unique} patients for n_patients={n_patients}; "
+            "the sample table or extraction is not constrained to the sample")
     return events, periods, table
 
 
