@@ -32,6 +32,8 @@ jobs:
           python-version: ${{ matrix.python-version }}
       - run: python -m pip install -U pip
       - run: pip install -e ".[dev,test]"
+      - name: Build the optional C kernel
+        run: CC=gcc bash scripts/build_fast.sh
       - name: Lint (syntax and undefined names)
         run: ruff check .
       - name: Load the OMOP test database
