@@ -24,23 +24,30 @@ from scipy import sparse
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 import matplotlib
+
 matplotlib.use("Agg")
 import matplotlib.pyplot as plt
 
+from topocdm import hurdle
 from topocdm import perdomain as pdm
 from topocdm import visitanchor as va
-from topocdm import hurdle
 
 FIG, RES = "figs", "results"
 os.makedirs(FIG, exist_ok=True)
 os.makedirs(RES, exist_ok=True)
-plt.rcParams.update({"figure.dpi": 160, "font.size": 9,
-                     "axes.spines.top": False, "axes.spines.right": False,
-                     "axes.grid": True, "grid.alpha": 0.2,
-                     "grid.linewidth": 0.5})
-C = dict(real="#1f2933", before="#9aa5b1", after="#2C6E9B")
-BINS = [("rare_1_3", 0.01, 0.03), ("mid_3_30", 0.03, 0.30),
-        ("common_30_100", 0.30, 1.0001)]
+plt.rcParams.update(
+    {
+        "figure.dpi": 160,
+        "font.size": 9,
+        "axes.spines.top": False,
+        "axes.spines.right": False,
+        "axes.grid": True,
+        "grid.alpha": 0.2,
+        "grid.linewidth": 0.5,
+    }
+)
+C = {"real": "#1f2933", "before": "#9aa5b1", "after": "#2C6E9B"}
+BINS = [("rare_1_3", 0.01, 0.03), ("mid_3_30", 0.03, 0.30), ("common_30_100", 0.30, 1.0001)]
 
 
 def derive_encounters(events):
@@ -48,14 +55,19 @@ def derive_encounters(events):
     ev["date"] = pd.to_datetime(ev["start_date"]).dt.normalize()
     cd = ("condition", "drug", "measurement", "observation", "procedure")
     clin = ev[ev["domain"].isin(cd)]
-    enc = (clin[["person_id", "date"]].drop_duplicates()
-           .sort_values(["person_id", "date"]).reset_index(drop=True))
+    enc = (
+        clin[["person_id", "date"]]
+        .drop_duplicates()
+        .sort_values(["person_id", "date"])
+        .reset_index(drop=True)
+    )
     enc["visit_occurrence_id"] = np.arange(1, len(enc) + 1)
     enc["visit_start_date"] = enc["date"]
     enc["visit_end_date"] = enc["date"]
     enc["visit_concept_id"] = 9202
-    ev = ev.merge(enc[["person_id", "date", "visit_occurrence_id"]],
-                  on=["person_id", "date"], how="left")
+    ev = ev.merge(
+        enc[["person_id", "date", "visit_occurrence_id"]], on=["person_id", "date"], how="left"
+    )
     ev.loc[~ev["domain"].isin(cd), "visit_occurrence_id"] = np.nan
     return ev, enc
 
@@ -67,8 +79,7 @@ def matrix_on(records, periods, concept_ids):
     ev = records[records["concept_id"].isin(set(concept_ids))]
     rows = ev["person_id"].map(prow).to_numpy(dtype=np.int64)
     cols = ev["concept_id"].map(ccol).to_numpy(dtype=np.int64)
-    X = sparse.csr_matrix((np.ones(len(ev)), (rows, cols)),
-                          shape=(len(persons), len(concept_ids)))
+    X = sparse.csr_matrix((np.ones(len(ev)), (rows, cols)), shape=(len(persons), len(concept_ids)))
     X.sum_duplicates()
     return X.toarray()
 
@@ -97,18 +108,18 @@ def run(name, events, periods, visits, R, prefix):
     X_all, concept_ids, _, _ = pdm.clinical_incidence(events, periods)
     X_tr = matrix_on(ev_tr, pe_tr, concept_ids)
     X_te = matrix_on(ev_te, pe_te, concept_ids)
-    prev_tr = (X_tr > 0).mean(0)
+    (X_tr > 0).mean(0)
     prev_te = (X_te > 0).mean(0)
-    T_te = np.maximum((pe_te["end_date"] - pe_te["start_date"]).dt.days
-                      .to_numpy(float) / 365.25, 1 / 365.25)
-    inc_te = X_te.sum(0) / T_te.sum() * 1000.0
+    T_te = np.maximum(
+        (pe_te["end_date"] - pe_te["start_date"]).dt.days.to_numpy(float) / 365.25, 1 / 365.25
+    )
+    X_te.sum(0) / T_te.sum() * 1000.0
 
     fit = va.fit_visitanchor(ev_tr, pe_tr, vi_tr)
 
     before, after = [], []
     for r in range(R):
-        sp = pdm.sample_periods(pe_te, len(pe_te),
-                                np.random.default_rng(1000 + r))
+        sp = pdm.sample_periods(pe_te, len(pe_te), np.random.default_rng(1000 + r))
         tab = va.generate_visitanchor(fit, sp, seed=2000 + r)
         Xs = matrix_on(pdm.tables_to_records(tab), sp, concept_ids)
         before.append((Xs > 0).mean(0))
@@ -117,35 +128,49 @@ def run(name, events, periods, visits, R, prefix):
 
     # evaluate on concepts the training split could know about
     train_total = np.asarray(X_tr.sum(axis=0)).ravel()
-    test_total  = np.asarray(X_te.sum(axis=0)).ravel()
+    test_total = np.asarray(X_te.sum(axis=0)).ravel()
     keep = (train_total > 10) & (test_total > 10)
     idx = np.where(keep)[0]
-    out = dict(name=name, R=R, n_train=len(train), n_test=len(test),
-               n_concepts=int(len(concept_ids)), n_compared=int(len(idx)),
-               bins={})
-    print(f"{name}: train {len(train)} / test {len(test)}, "
-          f"{len(idx)} concepts compared, {R} cohorts in {time.time()-t0:.1f}s")
+    out = {
+        "name": name,
+        "R": R,
+        "n_train": len(train),
+        "n_test": len(test),
+        "n_concepts": int(len(concept_ids)),
+        "n_compared": int(len(idx)),
+        "bins": {},
+    }
+    print(
+        f"{name}: train {len(train)} / test {len(test)}, "
+        f"{len(idx)} concepts compared, {R} cohorts in {time.time() - t0:.1f}s"
+    )
     for bname, lo, hi in BINS:
         m = idx[(prev_te[idx] >= lo) & (prev_te[idx] < hi)]
         if len(m) == 0:
             continue
         ib, _, _ = coverage(prev_te[m], [b[m] for b in before], None, None)
         ia, _, _ = coverage(prev_te[m], [a[m] for a in after], None, None)
-        out["bins"][bname] = dict(
-            n=int(len(m)),
-            before=float(ib.mean()), after=float(ia.mean()),
-            before_ratio=float(np.median(np.vstack([b[m] for b in before]).mean(0)
-                                         / np.maximum(prev_te[m], 1e-12))),
-            after_ratio=float(np.median(np.vstack([a[m] for a in after]).mean(0)
-                                        / np.maximum(prev_te[m], 1e-12))))
-        print(f"  {bname:14s} n={len(m):4d} prevalence coverage "
-              f"{ib.mean():.0%} -> {ia.mean():.0%}; "
-              f"ratio {out['bins'][bname]['before_ratio']:.2f} -> "
-              f"{out['bins'][bname]['after_ratio']:.2f}")
+        out["bins"][bname] = {
+            "n": int(len(m)),
+            "before": float(ib.mean()),
+            "after": float(ia.mean()),
+            "before_ratio": float(
+                np.median(np.vstack([b[m] for b in before]).mean(0) / np.maximum(prev_te[m], 1e-12))
+            ),
+            "after_ratio": float(
+                np.median(np.vstack([a[m] for a in after]).mean(0) / np.maximum(prev_te[m], 1e-12))
+            ),
+        }
+        print(
+            f"  {bname:14s} n={len(m):4d} prevalence coverage "
+            f"{ib.mean():.0%} -> {ia.mean():.0%}; "
+            f"ratio {out['bins'][bname]['before_ratio']:.2f} -> "
+            f"{out['bins'][bname]['after_ratio']:.2f}"
+        )
     # overall
     ib, _, _ = coverage(prev_te[idx], [b[idx] for b in before], None, None)
     ia, _, _ = coverage(prev_te[idx], [a[idx] for a in after], None, None)
-    out["overall"] = dict(before=float(ib.mean()), after=float(ia.mean()))
+    out["overall"] = {"before": float(ib.mean()), "after": float(ia.mean())}
     print(f"  overall coverage {ib.mean():.0%} -> {ia.mean():.0%}")
     return out
 
@@ -158,16 +183,15 @@ def main():
     ev_s = ev[ev.person_id.isin(keep)].copy()
     pe_s = pe[pe.person_id.isin(keep)].copy()
     ev_s, enc_s = derive_encounters(ev_s)
-    out["synthea"] = run("Synthea 2k", ev_s, pe_s, enc_s, R=20,
-                         prefix="fig40_synthea_hurdle")
+    out["synthea"] = run("Synthea 2k", ev_s, pe_s, enc_s, R=20, prefix="fig40_synthea_hurdle")
 
     spec = importlib.util.spec_from_file_location(
-        "m21", os.path.join(os.path.dirname(__file__), "21_subject_spectra.py"))
+        "m21", os.path.join(os.path.dirname(__file__), "21_subject_spectra.py")
+    )
     m21 = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(m21)
     ev_m, pe_m, vis_m = m21._load_mimic()
-    out["mimic"] = run("MIMIC demo", ev_m, pe_m, vis_m, R=50,
-                       prefix="fig40_mimic_hurdle")
+    out["mimic"] = run("MIMIC demo", ev_m, pe_m, vis_m, R=50, prefix="fig40_mimic_hurdle")
 
     # figure: before/after by bin
     fig, axes = plt.subplots(1, 2, figsize=(8.4, 3.3), sharey=True)

@@ -62,7 +62,7 @@ def load_config(path: str = DEFAULT_CONFIG, cmd: str | None = None):
     path = os.path.expanduser(path)
     if not os.path.exists(path):
         raise SystemExit(f"connection card not found: {path}")
-    with open(path, "r", encoding="utf-8") as fh:
+    with open(path, encoding="utf-8") as fh:
         cfg = yaml.safe_load(fh) or {}
 
     conn = (cfg.get("databricks") or {}).get("connection") or {}
@@ -72,8 +72,7 @@ def load_config(path: str = DEFAULT_CONFIG, cmd: str | None = None):
 
     name = cmd or next(iter(cdms))
     if name not in cdms:
-        raise SystemExit(
-            f"cmd '{name}' not in {path}; available: {', '.join(cdms)}")
+        raise SystemExit(f"cmd '{name}' not in {path}; available: {', '.join(cdms)}")
     prof = cdms[name] or {}
     cdm = prof.get("cdm_schema")
     scratch = prof.get("results_schema")
@@ -95,10 +94,10 @@ def _resolve_schemas(args):
     return conn, (args.cdm or cdm), (args.results_schema or results), name
 
 
-def _dry_run(backend: str, cdm: str, results: str, n_patients: int | None,
-             seed: int, keep_scratch: bool):
-    dialect = {"databricks": "spark", "postgres": "postgres",
-               "duckdb": "duckdb"}[backend]
+def _dry_run(
+    backend: str, cdm: str, results: str, n_patients: int | None, seed: int, keep_scratch: bool
+):
+    dialect = {"databricks": "spark", "postgres": "postgres", "duckdb": "duckdb"}[backend]
     table = None
     join = ""
     if n_patients is not None:
@@ -121,34 +120,34 @@ def _dry_run(backend: str, cdm: str, results: str, n_patients: int | None,
 
 def main(argv=None):
     ap = argparse.ArgumentParser(description=__doc__)
-    ap.add_argument("--backend", choices=["databricks", "postgres", "duckdb"],
-                    default="databricks")
+    ap.add_argument("--backend", choices=["databricks", "postgres", "duckdb"], default="databricks")
     ap.add_argument("--config", default=DEFAULT_CONFIG)
-    ap.add_argument("--cmd", default=None,
-                    help="which cdms entry to use (default: the first)")
+    ap.add_argument("--cmd", default=None, help="which cdms entry to use (default: the first)")
     ap.add_argument("--cdm", default=None, help="override cdm_schema")
-    ap.add_argument("--results-schema", default=None,
-                    help="override results_schema (writable scratch)")
-    ap.add_argument("--dsn", default=None,
-                    help="Postgres DSN (default: CDM_DSN)")
-    ap.add_argument("--duckdb", default=":memory:",
-                    help="DuckDB path for --backend duckdb")
-    ap.add_argument("--n-patients", type=int, default=None,
-                    help="patient sample; written to results_schema")
+    ap.add_argument(
+        "--results-schema", default=None, help="override results_schema (writable scratch)"
+    )
+    ap.add_argument("--dsn", default=None, help="Postgres DSN (default: CDM_DSN)")
+    ap.add_argument("--duckdb", default=":memory:", help="DuckDB path for --backend duckdb")
+    ap.add_argument(
+        "--n-patients", type=int, default=None, help="patient sample; written to results_schema"
+    )
     ap.add_argument("--seed", type=int, default=0)
-    ap.add_argument("--k", type=int, default=20,
-                    help="coupling rank (K); lower it for small cohorts")
-    ap.add_argument("--max-patients", type=int, default=None,
-                    help="local cap passed to fit_perdomain")
-    ap.add_argument("--keep-scratch", action="store_true",
-                    help="keep the sample table after the fetch")
+    ap.add_argument(
+        "--k", type=int, default=20, help="coupling rank (K); lower it for small cohorts"
+    )
+    ap.add_argument(
+        "--max-patients", type=int, default=None, help="local cap passed to fit_perdomain"
+    )
+    ap.add_argument(
+        "--keep-scratch", action="store_true", help="keep the sample table after the fetch"
+    )
     ap.add_argument("--host", default=None)
     ap.add_argument("--http-path", default=None)
     ap.add_argument("--token", default=None)
     ap.add_argument("--out", default="results/databricks_fit.pkl")
     ap.add_argument("--summary", default="results/databricks_fit.json")
-    ap.add_argument("--dry-run", action="store_true",
-                    help="print the SQL and exit; no connection")
+    ap.add_argument("--dry-run", action="store_true", help="print the SQL and exit; no connection")
     args = ap.parse_args(argv)
 
     if args.n_patients is not None and args.n_patients <= 0:
@@ -159,14 +158,12 @@ def main(argv=None):
         ap.error("--n-patients needs a writable results_schema")
 
     if args.dry_run:
-        _dry_run(args.backend, cdm, results, args.n_patients, args.seed,
-                 args.keep_scratch)
+        _dry_run(args.backend, cdm, results, args.n_patients, args.seed, args.keep_scratch)
         return 0
 
     t0 = time.time()
     if args.backend == "databricks":
-        backend = db.DatabricksBackend(conn_cfg, args.host, args.http_path,
-                                       args.token)
+        backend = db.DatabricksBackend(conn_cfg, args.host, args.http_path, args.token)
     elif args.backend == "postgres":
         dsn = args.dsn or os.environ.get("CDM_DSN")
         if not dsn:
@@ -177,19 +174,31 @@ def main(argv=None):
 
     try:
         fit, summary = db.run_fit(
-            backend, cdm, results, args.n_patients, seed=args.seed,
-            k=args.k, max_patients=args.max_patients,
-            keep_scratch=args.keep_scratch, cmd=cmd_name,
-            out=args.out, summary_path=args.summary)
+            backend,
+            cdm,
+            results,
+            args.n_patients,
+            seed=args.seed,
+            k=args.k,
+            max_patients=args.max_patients,
+            keep_scratch=args.keep_scratch,
+            cmd=cmd_name,
+            out=args.out,
+            summary_path=args.summary,
+        )
     finally:
         backend.close()
 
-    print(f"pulled {summary['records']:,} records for "
-          f"{summary['patients']:,} patients "
-          f"({summary['period_rows']:,} periods) in {time.time() - t0:.1f}s")
-    print(f"fitted: k={summary['k']:.2f}, tmean={summary['propensity_tmean']:.2f}, "
-          f"death={summary['death_frac']:.3f}, n_params={summary['n_parameters']:,}, "
-          f"K={summary['K']}")
+    print(
+        f"pulled {summary['records']:,} records for "
+        f"{summary['patients']:,} patients "
+        f"({summary['period_rows']:,} periods) in {time.time() - t0:.1f}s"
+    )
+    print(
+        f"fitted: k={summary['k']:.2f}, tmean={summary['propensity_tmean']:.2f}, "
+        f"death={summary['death_frac']:.3f}, n_params={summary['n_parameters']:,}, "
+        f"K={summary['K']}"
+    )
     print(f"wrote {args.out} and {args.summary}")
     return 0
 

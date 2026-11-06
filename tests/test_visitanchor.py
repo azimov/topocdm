@@ -12,11 +12,13 @@ from topocdm import visitanchor as va
 def _synthetic(n=300, seed=0):
     """A small visit-anchored CDM: every event belongs to a visit."""
     rng = np.random.default_rng(seed)
-    periods = pd.DataFrame({
-        "person_id": np.arange(1, n + 1),
-        "start_date": pd.Timestamp("2020-01-01"),
-        "end_date": pd.Timestamp("2024-12-31"),
-    })
+    periods = pd.DataFrame(
+        {
+            "person_id": np.arange(1, n + 1),
+            "start_date": pd.Timestamp("2020-01-01"),
+            "end_date": pd.Timestamp("2024-12-31"),
+        }
+    )
     visits, events = [], []
     vid = 0
     for i in range(n):
@@ -26,22 +28,41 @@ def _synthetic(n=300, seed=0):
             s = pd.Timestamp("2020-01-01") + pd.Timedelta(days=int(day))
             e = s + pd.Timedelta(days=int(rng.integers(0, 5)))
             visits.append((i + 1, vid, s, e, 9202))
-            for dom, concepts in [("condition", [100, 101]),
-                                  ("drug", [200, 201]),
-                                  ("measurement", [300, 301, 302])]:
+            for dom, concepts in [
+                ("condition", [100, 101]),
+                ("drug", [200, 201]),
+                ("measurement", [300, 301, 302]),
+            ]:
                 k = int(rng.poisson(2.0))
                 for _ in range(k):
                     c = int(rng.choice(concepts))
-                    dur = pd.Timedelta(days=int(rng.integers(0, 30))) \
-                        if dom in ("condition", "drug") else pd.NaT
-                    events.append((i + 1, dom, c, s, s + dur if dur is not pd.NaT
-                                   else pd.NaT, vid))
-    events = pd.DataFrame(events, columns=[
-        "person_id", "domain", "concept_id", "start_date", "end_date",
-        "visit_occurrence_id"])
-    visits = pd.DataFrame(visits, columns=[
-        "person_id", "visit_occurrence_id", "visit_start_date",
-        "visit_end_date", "visit_concept_id"])
+                    dur = (
+                        pd.Timedelta(days=int(rng.integers(0, 30)))
+                        if dom in ("condition", "drug")
+                        else pd.NaT
+                    )
+                    events.append((i + 1, dom, c, s, s + dur if dur is not pd.NaT else pd.NaT, vid))
+    events = pd.DataFrame(
+        events,
+        columns=[
+            "person_id",
+            "domain",
+            "concept_id",
+            "start_date",
+            "end_date",
+            "visit_occurrence_id",
+        ],
+    )
+    visits = pd.DataFrame(
+        visits,
+        columns=[
+            "person_id",
+            "visit_occurrence_id",
+            "visit_start_date",
+            "visit_end_date",
+            "visit_concept_id",
+        ],
+    )
     return events, periods, visits
 
 
@@ -54,8 +75,14 @@ def test_fit_generate_and_interval_structure():
 
     sp = pdm.sample_periods(periods, len(periods), np.random.default_rng(1))
     tables = va.generate_visitanchor(fit, sp, seed=2)
-    for name in ("condition_occurrence", "drug_exposure", "measurement",
-                 "visit_occurrence", "condition_era", "drug_era"):
+    for name in (
+        "condition_occurrence",
+        "drug_exposure",
+        "measurement",
+        "visit_occurrence",
+        "condition_era",
+        "drug_era",
+    ):
         assert name in tables
     assert len(tables["condition_occurrence"]) > 0
     assert len(tables["condition_era"]) > 0
@@ -75,9 +102,11 @@ def test_levels_are_in_the_right_ballpark():
     fit = va.fit_visitanchor(events, periods, visits)
     sp = pdm.sample_periods(periods, len(periods), np.random.default_rng(4))
     tables = va.generate_visitanchor(fit, sp, seed=5)
-    for table, dom in [("condition_occurrence", "condition"),
-                       ("drug_exposure", "drug"),
-                       ("measurement", "measurement")]:
+    for table, dom in [
+        ("condition_occurrence", "condition"),
+        ("drug_exposure", "drug"),
+        ("measurement", "measurement"),
+    ]:
         assert 0.4 < len(tables[table]) / max(fit.n_events[dom], 1) < 2.5
 
 

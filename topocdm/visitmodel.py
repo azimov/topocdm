@@ -49,13 +49,13 @@ from scipy import sparse
 
 @dataclass
 class VisitTopicModel:
-    theta: np.ndarray          # (K, C) concept catalogue per visit type
-    trans: np.ndarray          # (K, K) topic transition
-    rho: np.ndarray            # (K,) starting distribution
+    theta: np.ndarray  # (K, C) concept catalogue per visit type
+    trans: np.ndarray  # (K, K) topic transition
+    rho: np.ndarray  # (K,) starting distribution
     visits_per_patient: float
     gap_mean: float
     visit_size: float = 1.0
-    visit_count_pool: np.ndarray = None   # empirical visits-per-patient, for sampling
+    visit_count_pool: np.ndarray = None  # type: ignore[assignment]  # empirical, for sampling
     # scale of patient-level heterogeneity: u_i ~ Gamma(patient_shape). One
     # parameter, and it is what makes the spectrum work -- without it the
     # patient-level variation is only a visit count and the eigenvalue profile is
@@ -70,15 +70,19 @@ class VisitTopicModel:
 
     def summary(self) -> dict:
         K = self.theta.shape[0]
-        return dict(K=int(K), C=int(self.theta.shape[1]),
-                    visit_size=float(self.visit_size),
-                    n_parameters=self.n_parameters,
-                    visits_per_patient=float(self.visits_per_patient),
-                    self_transition=float(np.mean(np.diag(self.trans))))
+        return {
+            "K": int(K),
+            "C": int(self.theta.shape[1]),
+            "visit_size": float(self.visit_size),
+            "n_parameters": self.n_parameters,
+            "visits_per_patient": float(self.visits_per_patient),
+            "self_transition": float(np.mean(np.diag(self.trans))),
+        }
 
 
-def fit_topics(V: sparse.csr_matrix, K: int = 30, n_iter: int = 40,
-               seed: int = 0, verbose: bool = False):
+def fit_topics(
+    V: sparse.csr_matrix, K: int = 30, n_iter: int = 40, seed: int = 0, verbose: bool = False
+):
     """Fit the visit-topic mixture by EM (the aspect / PLSA model).
 
     Each visit is a bag of concepts. A visit of topic k draws its concepts
@@ -108,20 +112,22 @@ def fit_topics(V: sparse.csr_matrix, K: int = 30, n_iter: int = 40,
         R /= Z
         ll = float(np.sum(np.log(Z.ravel() + 1e-300) + m.ravel()))
 
-        H = np.asarray((R.T @ V)) + 1e-9
+        H = np.asarray(R.T @ V) + 1e-9
         H /= H.sum(1, keepdims=True)
-        pi = np.maximum(R.mean(axis=0), 1e-9); pi /= pi.sum()
+        pi = np.maximum(R.mean(axis=0), 1e-9)
+        pi /= pi.sum()
 
         if verbose and (it + 1) % 10 == 0:
-            print(f"  iter {it+1:3d}  loglik {ll:,.0f}")
+            print(f"  iter {it + 1:3d}  loglik {ll:,.0f}")
         if ll - prev < 1e-6 * max(1.0, abs(prev)):
             break
         prev = ll
     return R, H, pi, ll
 
 
-def fit_transitions(topic_of_visit: np.ndarray, person_of_visit: np.ndarray,
-                    order: np.ndarray | None = None):
+def fit_transitions(
+    topic_of_visit: np.ndarray, person_of_visit: np.ndarray, order: np.ndarray | None = None
+):
     """Topic-to-topic transition counts from consecutive visits of a patient."""
     K = int(topic_of_visit.max()) + 1
     if order is None:
@@ -138,8 +144,7 @@ def fit_transitions(topic_of_visit: np.ndarray, person_of_visit: np.ndarray,
     return T, rho
 
 
-def simulate_topic_counts(n_patients: int, visit_counts, model: VisitTopicModel,
-                          rng) -> np.ndarray:
+def simulate_topic_counts(n_patients: int, visit_counts, model: VisitTopicModel, rng) -> np.ndarray:
     """Draw (n_patients, K) counts of visits per topic.
 
     `visit_counts` may be a scalar or a per-patient array. Heterogeneity in the
@@ -163,8 +168,9 @@ def simulate_topic_counts(n_patients: int, visit_counts, model: VisitTopicModel,
     return c
 
 
-def simulate_visits(model: VisitTopicModel, n_patients: int, rng,
-                    visits_per_patient: int | None = None) -> np.ndarray:
+def simulate_visits(
+    model: VisitTopicModel, n_patients: int, rng, visits_per_patient: int | None = None
+) -> np.ndarray:
     """Generate a synthetic patient x concept count matrix."""
     if visits_per_patient is None and model.visit_count_pool is not None:
         pool = np.asarray(model.visit_count_pool)

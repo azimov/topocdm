@@ -75,12 +75,17 @@ def simulate(cfg: SimConfig | None = None, seed: int | None = None):
 
     X = rng.poisson(mu)
 
-    true = Params(u=u, lam=lam, B=B, patient_group=pg,
-                  concept_group=concept_group.copy(), n_groups=G)
-    data = CDMIncidence(X=X, T=T, concept_group=concept_group.copy(),
-                        patient_group=pg,
-                        concept_names=[f"concept_{j:03d}" for j in range(c)],
-                        meta=dict(sim=cfg.__dict__, true_events=float(mu.sum())))
+    true = Params(
+        u=u, lam=lam, B=B, patient_group=pg, concept_group=concept_group.copy(), n_groups=G
+    )
+    data = CDMIncidence(
+        X=X,
+        T=T,
+        concept_group=concept_group.copy(),
+        patient_group=pg,
+        concept_names=[f"concept_{j:03d}" for j in range(c)],
+        meta={"sim": cfg.__dict__, "true_events": float(mu.sum())},
+    )
     return data, true
 
 
@@ -93,6 +98,5 @@ def simulate_null(cfg: SimConfig | None = None, seed: int | None = None):
     against which 'is there real signal in the topology' is tested.
     """
     cfg = cfg or SimConfig()
-    cfg = SimConfig(**{**cfg.__dict__, "block_amplification": 0.0,
-                       "block_noise": 1e-9})
+    cfg = SimConfig(**{**cfg.__dict__, "block_amplification": 0.0, "block_noise": 1e-9})
     return simulate(cfg, seed)

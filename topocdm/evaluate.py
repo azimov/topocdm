@@ -67,12 +67,15 @@ def _calib(y: np.ndarray, yhat: np.ndarray) -> dict:
     m = np.isfinite(y) & np.isfinite(yhat)
     y, yhat = y[m], yhat[m]
     if len(y) < 3:
-        return dict(r=np.nan, slope=np.nan, intercept=np.nan, med_ratio=np.nan)
+        return {"r": np.nan, "slope": np.nan, "intercept": np.nan, "med_ratio": np.nan}
     slope, intercept = np.polyfit(yhat, y, 1)
     ratio = y / np.maximum(yhat, 1e-12)
-    return dict(r=float(np.corrcoef(y, yhat)[0, 1]),
-                slope=float(slope), intercept=float(intercept),
-                med_ratio=float(np.median(ratio)))
+    return {
+        "r": float(np.corrcoef(y, yhat)[0, 1]),
+        "slope": float(slope),
+        "intercept": float(intercept),
+        "med_ratio": float(np.median(ratio)),
+    }
 
 
 def compare(real: CDMIncidence, synth: CDMIncidence) -> dict:
@@ -92,31 +95,38 @@ def compare(real: CDMIncidence, synth: CDMIncidence) -> dict:
         mid = np.argsort(-pv)[: min(25, len(pv))]
     top = mid[: min(25, mid.size)]
 
-    return dict(
-        prevalence=_calib(pv, pvs),
-        incidence=_calib(inc, incs),
-        degree_l1=float(np.abs(dh - dhs).sum()),
-        degree_ks=float(np.max(np.abs(np.cumsum(dh) - np.cumsum(dhs)))),
-        degree_mean=(float(degree(real).mean()), float(degree(synth).mean())),
-        degree_p99=(float(np.percentile(degree(real), 99)),
-                    float(np.percentile(degree(synth), 99))),
-        cooccurrence_r=float(np.corrcoef(
-            cooccurrence(real, top)[np.triu_indices(len(top), 1)],
-            cooccurrence(synth, top)[np.triu_indices(len(top), 1)])[0, 1]),
-        gini_events=(gini(real.X.sum(axis=1)), gini(synth.X.sum(axis=1))),
-        total_events=(real.total, synth.total),
-        n=(real.n, synth.n),
-    )
+    return {
+        "prevalence": _calib(pv, pvs),
+        "incidence": _calib(inc, incs),
+        "degree_l1": float(np.abs(dh - dhs).sum()),
+        "degree_ks": float(np.max(np.abs(np.cumsum(dh) - np.cumsum(dhs)))),
+        "degree_mean": (float(degree(real).mean()), float(degree(synth).mean())),
+        "degree_p99": (
+            float(np.percentile(degree(real), 99)),
+            float(np.percentile(degree(synth), 99)),
+        ),
+        "cooccurrence_r": float(
+            np.corrcoef(
+                cooccurrence(real, top)[np.triu_indices(len(top), 1)],
+                cooccurrence(synth, top)[np.triu_indices(len(top), 1)],
+            )[0, 1]
+        ),
+        "gini_events": (gini(real.X.sum(axis=1)), gini(synth.X.sum(axis=1))),
+        "total_events": (real.total, synth.total),
+        "n": (real.n, synth.n),
+    }
 
 
 def predictive_loglik(p: Params, data: CDMIncidence) -> float:
     """Mean conditional log-likelihood per event on a held-out CDM."""
     from topocdm.model import loglik_conditional
+
     return loglik_conditional(p, data) / max(data.total, 1)
 
 
-def predictive_loglik_nb(data: CDMIncidence, p: Params, k: float,
-                         marginalise_groups: bool = True) -> float:
+def predictive_loglik_nb(
+    data: CDMIncidence, p: Params, k: float, marginalise_groups: bool = True
+) -> float:
     """Held-out predictive log-likelihood per event, integrating out propensity.
 
     A held-out patient has no fitted u_i, so the propensity is integrated over
@@ -137,20 +147,21 @@ def predictive_loglik_nb(data: CDMIncidence, p: Params, k: float,
         B = np.ones((1, H))
     else:
         G = p.B.shape[0]
+        if p.patient_group is None:
+            raise ValueError("patient_group is required when B is set")
         cnt = np.bincount(p.patient_group, minlength=G).astype(float)
         pis = cnt / cnt.sum()
         B = p.B
 
-    lam_h = np.bincount(data.concept_group, weights=p.lam, minlength=H)
+    np.bincount(data.concept_group, weights=p.lam, minlength=H)
     parts = []
     for g in range(G):
-        mu = np.maximum(data.T[:, None] *
-                        (p.lam * B[g, data.concept_group])[None, :], 1e-12)
+        mu = np.maximum(data.T[:, None] * (p.lam * B[g, data.concept_group])[None, :], 1e-12)
         prob = k / (k + mu)
         lp = nbinom.logpmf(data.X, k, prob)
         if marginalise_groups and G > 1:
             lp = lp + np.log(max(pis[g], 1e-300))
         parts.append(lp)
-    stacked = np.stack(parts, axis=0)                 # (G, N, C)
+    stacked = np.stack(parts, axis=0)  # (G, N, C)
     total = logsumexp(stacked, axis=0)
     return float(total.sum() / max(data.total, 1))

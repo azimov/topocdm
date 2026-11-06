@@ -48,8 +48,7 @@ POINT_DOMAINS = ("measurement", "observation", "procedure")
 #: visit is its own domain, with three concepts and a degenerate interval
 VISIT_DOMAIN = "visit"
 #: order used for reporting and generation
-ALL_DOMAINS = ("condition", "drug", "measurement", "observation",
-               "procedure", "visit")
+ALL_DOMAINS = ("condition", "drug", "measurement", "observation", "procedure", "visit")
 
 EPS = 1e-12
 
@@ -58,8 +57,8 @@ EPS = 1e-12
 # loading and atom construction
 # --------------------------------------------------------------------------
 
-def load_extract(events_path="data/events_full.csv",
-                 periods_path="data/periods.csv"):
+
+def load_extract(events_path="data/events_full.csv", periods_path="data/periods.csv"):
     """Load the dated extract produced by scripts/extract_dated.sh."""
     ev = pd.read_csv(events_path, parse_dates=["start_date", "end_date"])
     pe = pd.read_csv(periods_path, parse_dates=["start_date", "end_date"])
@@ -105,8 +104,9 @@ def _person_windows(periods: pd.DataFrame, persons):
     return start, end, T
 
 
-def build_counts(events: pd.DataFrame, periods: pd.DataFrame,
-                 domain: np.ndarray, concept: np.ndarray, idx: dict):
+def build_counts(
+    events: pd.DataFrame, periods: pd.DataFrame, domain: np.ndarray, concept: np.ndarray, idx: dict
+):
     """Patient x atom count matrix over mapped + unmapped atoms, plus person-time.
 
     Returns (X sparse (N, C), T (N,), person_ids (N,)).
@@ -119,8 +119,7 @@ def build_counts(events: pd.DataFrame, periods: pd.DataFrame,
     key = list(zip(ev["domain"], ev["concept_id"]))
     cols = np.array([idx[(d, int(c))] for d, c in key], dtype=np.int64)
     vals = np.ones(len(ev), dtype=float)
-    X = sparse.csr_matrix((vals, (rows, cols)),
-                          shape=(len(persons), len(domain)))
+    X = sparse.csr_matrix((vals, (rows, cols)), shape=(len(persons), len(domain)))
     X.sum_duplicates()
 
     _, _, T = _person_windows(periods, persons)
@@ -131,8 +130,7 @@ def build_counts(events: pd.DataFrame, periods: pd.DataFrame,
 CLINICAL_DOMAINS = ("condition", "drug", "measurement", "observation", "procedure")
 
 
-def clinical_incidence(events: pd.DataFrame, periods: pd.DataFrame,
-                       min_events: int = 1):
+def clinical_incidence(events: pd.DataFrame, periods: pd.DataFrame, min_events: int = 1):
     """Mapped clinical incidence matrix (the 773-concept object).
 
     This is the matrix the earlier spectral numbers were computed on: the five
@@ -141,14 +139,12 @@ def clinical_incidence(events: pd.DataFrame, periods: pd.DataFrame,
     """
     persons = np.sort(periods["person_id"].unique())
     prow = {int(p): i for i, p in enumerate(persons)}
-    ev = events[events["domain"].isin(CLINICAL_DOMAINS)
-                & (events["concept_id"] != 0)]
+    ev = events[events["domain"].isin(CLINICAL_DOMAINS) & (events["concept_id"] != 0)]
     concept_ids = np.sort(ev["concept_id"].unique())
     ccol = {int(c): j for j, c in enumerate(concept_ids)}
     rows = ev["person_id"].map(prow).to_numpy(dtype=np.int64)
     cols = ev["concept_id"].map(ccol).to_numpy(dtype=np.int64)
-    X = sparse.csr_matrix((np.ones(len(ev)), (rows, cols)),
-                          shape=(len(persons), len(concept_ids)))
+    X = sparse.csr_matrix((np.ones(len(ev)), (rows, cols)), shape=(len(persons), len(concept_ids)))
     X.sum_duplicates()
     if min_events > 1:
         keep = np.asarray(X.sum(axis=0)).ravel() >= min_events
@@ -160,28 +156,34 @@ def clinical_incidence(events: pd.DataFrame, periods: pd.DataFrame,
 
 def tables_to_records(tables: dict) -> pd.DataFrame:
     """Flatten generated OMOP tables back into (person, domain, concept)."""
-    spec = [("condition_occurrence", "condition_concept_id", "condition_start_date",
-             "condition"),
-            ("drug_exposure", "drug_concept_id", "drug_exposure_start_date", "drug"),
-            ("procedure_occurrence", "procedure_concept_id", "procedure_date",
-             "procedure"),
-            ("measurement", "measurement_concept_id", "measurement_date",
-             "measurement"),
-            ("observation", "observation_concept_id", "observation_date",
-             "observation"),
-            ("visit_occurrence", "visit_concept_id", "visit_start_date", "visit")]
+    spec = [
+        ("condition_occurrence", "condition_concept_id", "condition_start_date", "condition"),
+        ("drug_exposure", "drug_concept_id", "drug_exposure_start_date", "drug"),
+        ("procedure_occurrence", "procedure_concept_id", "procedure_date", "procedure"),
+        ("measurement", "measurement_concept_id", "measurement_date", "measurement"),
+        ("observation", "observation_concept_id", "observation_date", "observation"),
+        ("visit_occurrence", "visit_concept_id", "visit_start_date", "visit"),
+    ]
     parts = []
     for table, ccol, scol, dom in spec:
         df = tables.get(table)
         if df is None or len(df) == 0:
             continue
-        parts.append(pd.DataFrame({"person_id": df["person_id"],
-                                   "domain": dom,
-                                   "concept_id": df[ccol],
-                                   "start_date": df[scol]}))
-    return (pd.concat(parts, ignore_index=True) if parts
-            else pd.DataFrame(columns=["person_id", "domain", "concept_id",
-                                       "start_date"]))
+        parts.append(
+            pd.DataFrame(
+                {
+                    "person_id": df["person_id"],
+                    "domain": dom,
+                    "concept_id": df[ccol],
+                    "start_date": df[scol],
+                }
+            )
+        )
+    return (
+        pd.concat(parts, ignore_index=True)
+        if parts
+        else pd.DataFrame(columns=["person_id", "domain", "concept_id", "start_date"])
+    )
 
 
 def _year_exposure(periods: pd.DataFrame, years: np.ndarray):
@@ -210,9 +212,11 @@ def _year_exposure(periods: pd.DataFrame, years: np.ndarray):
 # duration and death
 # --------------------------------------------------------------------------
 
+
 def _gmmk(x: np.ndarray, k: int, n_iter: int = 300, seed: int = 0):
     """1D k-component Gaussian mixture on the log scale, by EM."""
     from scipy.stats import norm
+
     x = np.asarray(x, dtype=float)
     n = len(x)
     # quantile initialisation, which is stable for the heavy-tailed components
@@ -240,17 +244,18 @@ def _gmmk(x: np.ndarray, k: int, n_iter: int = 300, seed: int = 0):
 def _gmm_bic(x: np.ndarray, kmax: int = 4, seed: int = 0):
     """Choose the mixture order by BIC (likelihood criterion, not a headline)."""
     from scipy.stats import norm
+
     best = None
     for k in range(2, kmax + 1):
         pi, mu, s = _gmmk(x, k, seed=seed)
         ll = 0.0
         for j in range(k):
-            ll += np.sum(np.log(np.maximum(pi[j] * norm.pdf(x, mu[j], s[j]),
-                                           1e-300)))
-        n_params = 3 * k - 1          # weights sum to 1
+            ll += np.sum(np.log(np.maximum(pi[j] * norm.pdf(x, mu[j], s[j]), 1e-300)))
+        n_params = 3 * k - 1  # weights sum to 1
         bic = -2 * ll + n_params * np.log(len(x))
         if best is None or bic < best[0]:
             best = (bic, k, pi, mu, s)
+    assert best is not None
     return best[1], best[2], best[3], best[4]
 
 
@@ -286,11 +291,19 @@ def fit_durations(events: pd.DataFrame, domain: str):
     logd = np.log(dpos)
     logn = (float(logd.mean()), float(logd.std(ddof=1)))
     k2, pi2, mu2, s2 = _gmm_bic(logd, kmax=2)
-    return dict(pi0=pi0, qgrid=qgrid, qvals=qvals, k=int(k2),
-                pi=pi2, mu=mu2, s=s2,
-                lognormal_mu=logn[0], lognormal_s=logn[1],
-                observed_median=float(np.median(d)),
-                observed_zero=pi0)
+    return {
+        "pi0": pi0,
+        "qgrid": qgrid,
+        "qvals": qvals,
+        "k": int(k2),
+        "pi": pi2,
+        "mu": mu2,
+        "s": s2,
+        "lognormal_mu": logn[0],
+        "lognormal_s": logn[1],
+        "observed_median": float(np.median(d)),
+        "observed_zero": pi0,
+    }
 
 
 def sample_durations(dur: dict, n: int, rng) -> np.ndarray:
@@ -317,12 +330,10 @@ def fit_weibull(time_days: np.ndarray, event: np.ndarray):
         scale = np.exp(p[1])
         z = t / scale
         # log density for events, log survival for censored
-        ll = event * (np.log(shape) - np.log(scale) + (shape - 1) * np.log(z)) \
-            - z ** shape
+        ll = event * (np.log(shape) - np.log(scale) + (shape - 1) * np.log(z)) - z**shape
         return -float(np.sum(ll))
 
-    r = optimize.minimize(nll, x0=[np.log(1.0), np.log(3.0 * 365.25)],
-                          method="Nelder-Mead")
+    r = optimize.minimize(nll, x0=[np.log(1.0), np.log(3.0 * 365.25)], method="Nelder-Mead")
     return float(np.exp(r.x[0])), float(np.exp(r.x[1]))
 
 
@@ -330,26 +341,27 @@ def fit_weibull(time_days: np.ndarray, event: np.ndarray):
 # the fit
 # --------------------------------------------------------------------------
 
+
 @dataclass
 class PerDomainFit:
     domains: list = field(default_factory=lambda: list(ALL_DOMAINS))
-    atoms_domain: np.ndarray = None       # (C,) domain name
-    atoms_concept: np.ndarray = None      # (C,) concept_id (0 = unmapped)
-    eta: np.ndarray = None                # (C,) concept intensity (events/PY)
-    u: np.ndarray = None                  # (N,) contact volume, mean 1
-    k: float = 1.0                        # Gamma shape (heterogeneity)
-    propensity_tmean: float = 1.0         # person-time-weighted mean of fitted u
-    years: np.ndarray = None              # calendar years
-    lam_t: dict = field(default_factory=dict)   # domain -> (n_years,)
+    atoms_domain: np.ndarray = None  # type: ignore[assignment]  # (C,) domain name
+    atoms_concept: np.ndarray = None  # type: ignore[assignment]  # (C,) concept_id (0 = unmapped)
+    eta: np.ndarray = None  # type: ignore[assignment]  # (C,) concept intensity (events/PY)
+    u: np.ndarray = None  # type: ignore[assignment]  # (N,) contact volume, mean 1
+    k: float = 1.0  # Gamma shape (heterogeneity)
+    propensity_tmean: float = 1.0  # person-time-weighted mean of fitted u
+    years: np.ndarray = None  # type: ignore[assignment]  # calendar years
+    lam_t: dict = field(default_factory=dict)  # domain -> (n_years,)
     duration: dict = field(default_factory=dict)  # domain -> (mu, s, median)
-    death: dict = field(default_factory=dict)     # shape, scale, frac
-    z: np.ndarray = None                  # (N, K) recording dependence
-    beta: np.ndarray = None               # (C, K) concept loadings
-    z_mean: np.ndarray = None             # (K,)
-    z_cov: np.ndarray = None              # (K, K)
-    person_ids: np.ndarray = None
+    death: dict = field(default_factory=dict)  # shape, scale, frac
+    z: np.ndarray = None  # type: ignore[assignment]  # (N, K) recording dependence
+    beta: np.ndarray = None  # type: ignore[assignment]  # (C, K) concept loadings
+    z_mean: np.ndarray = None  # type: ignore[assignment]  # (K,)
+    z_cov: np.ndarray = None  # type: ignore[assignment]  # (K, K)
+    person_ids: np.ndarray = None  # type: ignore[assignment]
     n_events: dict = field(default_factory=dict)  # domain -> observed count
-    calibration: np.ndarray = None        # (C,) level calibration for generation
+    calibration: np.ndarray = None  # type: ignore[assignment]  # (C,) level calibration
     meta: dict = field(default_factory=dict)
 
     @property
@@ -369,7 +381,7 @@ class PerDomainFit:
         n = int(len(self.eta)) + 1
         for d in self.lam_t:
             n += int(len(self.lam_t[d]))
-        n += 102 * len(INTERVAL_DOMAINS)   # pi0 + 101 duration quantiles
+        n += 102 * len(INTERVAL_DOMAINS)  # pi0 + 101 duration quantiles
         K = 0 if self.beta is None else self.beta.shape[1]
         n += int(len(self.eta) * K) + int(K + K * (K + 1) / 2)
         return n
@@ -406,26 +418,35 @@ def _fit_gamma_shape(x: np.ndarray, mu: np.ndarray) -> float:
     """Gamma shape from the marginal negative-binomial likelihood of totals."""
     from scipy import optimize
     from scipy.special import gammaln
+
     x = np.asarray(x, dtype=float)
     mu = np.maximum(np.asarray(mu, dtype=float), EPS)
 
     def nll(theta):
         k = np.exp(theta[0])
-        ll = (gammaln(x + k) - gammaln(k) - gammaln(x + 1)
-              + k * (np.log(k) - np.log(k + mu))
-              + x * (np.log(mu) - np.log(k + mu)))
+        ll = (
+            gammaln(x + k)
+            - gammaln(k)
+            - gammaln(x + 1)
+            + k * (np.log(k) - np.log(k + mu))
+            + x * (np.log(mu) - np.log(k + mu))
+        )
         return -float(np.sum(ll))
 
-    r = optimize.minimize_scalar(lambda t: nll(np.array([t])),
-                                 bounds=(-6.0, 6.0), method="bounded")
+    r = optimize.minimize_scalar(lambda t: nll(np.array([t])), bounds=(-6.0, 6.0), method="bounded")
     return float(np.exp(r.x))
 
 
-def fit_perdomain(events: pd.DataFrame, periods: pd.DataFrame, K: int = 20,
-                  n_iter_factors: int = 12, seed: int = 0,
-                  max_patients: int | None = None,
-                  sample_frac: float | None = None,
-                  max_factor_patients: int = 5000) -> PerDomainFit:
+def fit_perdomain(
+    events: pd.DataFrame,
+    periods: pd.DataFrame,
+    K: int = 20,
+    n_iter_factors: int = 12,
+    seed: int = 0,
+    max_patients: int | None = None,
+    sample_frac: float | None = None,
+    max_factor_patients: int = 5000,
+) -> PerDomainFit:
     """Fit the per-domain temporal model.
 
     K is the rank of the recording-dependence coupling. It is set a priori
@@ -451,19 +472,18 @@ def fit_perdomain(events: pd.DataFrame, periods: pd.DataFrame, K: int = 20,
         periods = periods[periods["person_id"].isin(keep)].copy()
 
     atoms_domain, atoms_concept, idx = build_atoms(events)
-    X, T, persons = build_counts(events, periods, atoms_domain,
-                                 atoms_concept, idx)
+    X, T, persons = build_counts(events, periods, atoms_domain, atoms_concept, idx)
 
     # ---- Layer 1 marginals + Layer 2 heterogeneity (sparse IPF) ----
     u, eta = _fit_marginals_sparse(X, T)
-    k = _fit_gamma_shape(np.asarray(X.sum(axis=1)).ravel().astype(float),
-                         T * eta.sum())
+    k = _fit_gamma_shape(np.asarray(X.sum(axis=1)).ravel().astype(float), T * eta.sum())
     propensity_tmean = float(np.sum(T * u) / max(T.sum(), EPS))
 
     # ---- Layer 1 temporal profiles per domain ----
-    years = np.arange(int(events["start_date"].dt.year.min()),
-                      int(events["start_date"].dt.year.max()) + 1)
-    expo = _year_exposure(periods, years)              # (N, Y)
+    years = np.arange(
+        int(events["start_date"].dt.year.min()), int(events["start_date"].dt.year.max()) + 1
+    )
+    expo = _year_exposure(periods, years)  # (N, Y)
     pt_y = expo.sum(axis=0)
     lam_t = {}
     n_events = {}
@@ -502,10 +522,11 @@ def fit_perdomain(events: pd.DataFrame, periods: pd.DataFrame, K: int = 20,
         if int(p) in died:
             dd = np.datetime64(died[int(p)], "D")
             t = (dd - ob_start[i]) / np.timedelta64(1, "D")
-            death_frac_times.append(float(np.clip(t / max(follow[i], 1.0),
-                                                   0.0, 1.0)))
-    death_fit = dict(frac=float(len(death_frac_times) / len(persons)),
-                     frac_times=np.asarray(death_frac_times, dtype=float))
+            death_frac_times.append(float(np.clip(t / max(follow[i], 1.0), 0.0, 1.0)))
+    death_fit = {
+        "frac": float(len(death_frac_times) / len(persons)),
+        "frac_times": np.asarray(death_frac_times, dtype=float),
+    }
 
     # ---- Layer 3 recording dependence (low-rank coupling) ----
     z = np.zeros((len(persons), 1))
@@ -519,7 +540,7 @@ def fit_perdomain(events: pd.DataFrame, periods: pd.DataFrame, K: int = 20,
         # samples, so a patient subsample is enough.
         n_fit = min(len(persons), int(max_factor_patients))
         sub = np.sort(rng.choice(len(persons), size=n_fit, replace=False))
-        mu0 = (T[sub, None] * u[sub, None] * eta[None, :])
+        mu0 = T[sub, None] * u[sub, None] * eta[None, :]
         Xd = X[sub].toarray().astype(float)
         ff = fit_factors(mu0, Xd, K=K, n_iter=n_iter_factors, seed=seed)
         z = ff.a
@@ -535,18 +556,31 @@ def fit_perdomain(events: pd.DataFrame, periods: pd.DataFrame, K: int = 20,
         calibration = 1.0 / np.maximum(m_j, EPS)
 
     return PerDomainFit(
-        atoms_domain=atoms_domain, atoms_concept=atoms_concept,
-        eta=eta, u=u, k=k, propensity_tmean=propensity_tmean,
-        years=years, lam_t=lam_t, duration=duration,
-        death=death_fit, z=z, beta=beta, z_mean=z_mean, z_cov=z_cov,
-        person_ids=persons, n_events=n_events,
+        atoms_domain=atoms_domain,
+        atoms_concept=atoms_concept,
+        eta=eta,
+        u=u,
+        k=k,
+        propensity_tmean=propensity_tmean,
+        years=years,
+        lam_t=lam_t,
+        duration=duration,
+        death=death_fit,
+        z=z,
+        beta=beta,
+        z_mean=z_mean,
+        z_cov=z_cov,
+        person_ids=persons,
+        n_events=n_events,
         calibration=calibration,
-        meta=dict(n_patients=int(len(persons)),
-                  n_concepts=int(len(atoms_domain)), K=int(K),
-                  n_events_total=int(X.sum()),
-                  n_deaths=int(len(death_frac_times)),
-                  factor_patients=int(min(len(persons),
-                                          max_factor_patients))),
+        meta={
+            "n_patients": int(len(persons)),
+            "n_concepts": int(len(atoms_domain)),
+            "K": int(K),
+            "n_events_total": int(X.sum()),
+            "n_deaths": int(len(death_frac_times)),
+            "factor_patients": int(min(len(persons), max_factor_patients)),
+        },
     )
 
 
@@ -554,16 +588,19 @@ def fit_perdomain(events: pd.DataFrame, periods: pd.DataFrame, K: int = 20,
 # generation
 # --------------------------------------------------------------------------
 
+
 def sample_periods(periods: pd.DataFrame, n: int, rng) -> pd.DataFrame:
     """Resample (start, duration) pairs, keeping follow-up structure only."""
     s = periods["start_date"].to_numpy(dtype="datetime64[D]")
     d = (periods["end_date"] - periods["start_date"]).dt.days.to_numpy()
     pick = rng.integers(0, len(periods), size=n)
-    return pd.DataFrame({
-        "person_id": np.arange(1, n + 1),
-        "start_date": pd.to_datetime(s[pick]),
-        "end_date": pd.to_datetime(s[pick] + d[pick].astype("timedelta64[D]")),
-    })
+    return pd.DataFrame(
+        {
+            "person_id": np.arange(1, n + 1),
+            "start_date": pd.to_datetime(s[pick]),
+            "end_date": pd.to_datetime(s[pick] + d[pick].astype("timedelta64[D]")),
+        }
+    )
 
 
 def _generate_events(fit: PerDomainFit, periods: pd.DataFrame, rng):
@@ -575,7 +612,7 @@ def _generate_events(fit: PerDomainFit, periods: pd.DataFrame, rng):
     """
     n = len(periods)
     years = fit.years
-    expo = _year_exposure(periods, years)                 # (n, Y)
+    expo = _year_exposure(periods, years)  # (n, Y)
 
     # fresh patient heterogeneity and latent coupling state
     k = max(fit.k, 1e-6)
@@ -590,7 +627,7 @@ def _generate_events(fit: PerDomainFit, periods: pd.DataFrame, rng):
     K = 0 if fit.beta is None else fit.beta.shape[1]
     if K > 1:
         z = rng.multivariate_normal(fit.z_mean, fit.z_cov, size=n)
-        coupling = np.exp(np.clip(z @ fit.beta.T, -8.0, 8.0))   # (n, C)
+        coupling = np.exp(np.clip(z @ fit.beta.T, -8.0, 8.0))  # (n, C)
     else:
         coupling = np.ones((n, fit.n_concepts))
 
@@ -604,8 +641,13 @@ def _generate_events(fit: PerDomainFit, periods: pd.DataFrame, rng):
             act = expo[:, kk] > 0
             if not act.any():
                 continue
-            mu = (expo[act, kk][:, None] * u[act][:, None] * eta_d[None, :]
-                  * lam_d[kk] * coupling[np.ix_(act, cols)])
+            mu = (
+                expo[act, kk][:, None]
+                * u[act][:, None]
+                * eta_d[None, :]
+                * lam_d[kk]
+                * coupling[np.ix_(act, cols)]
+            )
             X = rng.poisson(mu)
             ii, jj = np.nonzero(X)
             if ii.size == 0:
@@ -623,16 +665,19 @@ def _generate_events(fit: PerDomainFit, periods: pd.DataFrame, rng):
             date_parts.append(date_full)
 
     if pid_parts:
-        events = pd.DataFrame({
-            "person_id": np.concatenate(pid_parts),
-            "domain": np.concatenate(dom_parts),
-            "concept_id": np.concatenate(cid_parts),
-            "start_date": pd.to_datetime(np.concatenate(date_parts)),
-            "end_date": pd.NaT,
-        })
+        events = pd.DataFrame(
+            {
+                "person_id": np.concatenate(pid_parts),
+                "domain": np.concatenate(dom_parts),
+                "concept_id": np.concatenate(cid_parts),
+                "start_date": pd.to_datetime(np.concatenate(date_parts)),
+                "end_date": pd.NaT,
+            }
+        )
     else:
-        events = pd.DataFrame(columns=[
-            "person_id", "domain", "concept_id", "start_date", "end_date"])
+        events = pd.DataFrame(
+            columns=["person_id", "domain", "concept_id", "start_date", "end_date"]
+        )
 
     # durations for interval domains, clipped to the observation period: an
     # interval cannot outlive the patient's follow-up (and an unclipped
@@ -645,8 +690,9 @@ def _generate_events(fit: PerDomainFit, periods: pd.DataFrame, rng):
         nd = int(m.sum())
         dur = sample_durations(fit.duration[d], nd, rng)
         starts = events.loc[m, "start_date"].to_numpy(dtype="datetime64[D]")
-        obe = pd.to_datetime(events.loc[m, "person_id"].map(ob_end_map)) \
-            .to_numpy(dtype="datetime64[D]")
+        obe = pd.to_datetime(events.loc[m, "person_id"].map(ob_end_map)).to_numpy(
+            dtype="datetime64[D]"
+        )
         max_dur = np.maximum((obe - starts) / np.timedelta64(1, "D"), 0)
         dur_days = np.minimum(dur.astype(float), max_dur).astype(np.int64)
         ends = starts + dur_days.astype("timedelta64[D]")
@@ -663,16 +709,17 @@ def _generate_events(fit: PerDomainFit, periods: pd.DataFrame, rng):
     else:
         t_days = np.array([], dtype="timedelta64[D]")
     death_date = ob_start[died] + t_days
-    death = pd.DataFrame({
-        "person_id": np.arange(1, n + 1)[died],
-        "death_date": pd.to_datetime(death_date),
-    })
+    death = pd.DataFrame(
+        {
+            "person_id": np.arange(1, n + 1)[died],
+            "death_date": pd.to_datetime(death_date),
+        }
+    )
 
     return events, death
 
 
-def generate_cohort(fit: PerDomainFit, n: int, periods: pd.DataFrame | None = None,
-                    seed: int = 0):
+def generate_cohort(fit: PerDomainFit, n: int, periods: pd.DataFrame | None = None, seed: int = 0):
     """Generate a synthetic dated cohort and the era tables.
 
     Returns a dict of DataFrames keyed by table name:
@@ -687,8 +734,7 @@ def generate_cohort(fit: PerDomainFit, n: int, periods: pd.DataFrame | None = No
     # keep only events before death (death truncates all other processes)
     if len(death):
         dmap = death.set_index("person_id")["death_date"]
-        dd = pd.to_datetime(events["person_id"].map(dmap)).to_numpy(
-            dtype="datetime64[ns]")
+        dd = pd.to_datetime(events["person_id"].map(dmap)).to_numpy(dtype="datetime64[ns]")
         start_ns = events["start_date"].to_numpy(dtype="datetime64[ns]")
         keep = np.isnat(dd) | (start_ns <= dd)
         events = events[keep].copy()
@@ -696,8 +742,7 @@ def generate_cohort(fit: PerDomainFit, n: int, periods: pd.DataFrame | None = No
     return tables_from_events(events, periods, death)
 
 
-def tables_from_events(events: pd.DataFrame, periods: pd.DataFrame,
-                       death: pd.DataFrame) -> dict:
+def tables_from_events(events: pd.DataFrame, periods: pd.DataFrame, death: pd.DataFrame) -> dict:
     """Build the OMOP domain, era and death tables from a dated event frame.
 
     Shared by the per-domain and visit-anchored generators: both produce the
@@ -706,18 +751,22 @@ def tables_from_events(events: pd.DataFrame, periods: pd.DataFrame,
     """
     tables = {}
     field = {
-        "condition": ("condition_occurrence", "condition_concept_id",
-                      "condition_start_date", "condition_end_date"),
-        "drug": ("drug_exposure", "drug_concept_id", "drug_exposure_start_date",
-                 "drug_exposure_end_date"),
-        "procedure": ("procedure_occurrence", "procedure_concept_id",
-                      "procedure_date", None),
-        "measurement": ("measurement", "measurement_concept_id",
-                        "measurement_date", None),
-        "observation": ("observation", "observation_concept_id",
-                        "observation_date", None),
-        "visit": ("visit_occurrence", "visit_concept_id", "visit_start_date",
-                  "visit_end_date"),
+        "condition": (
+            "condition_occurrence",
+            "condition_concept_id",
+            "condition_start_date",
+            "condition_end_date",
+        ),
+        "drug": (
+            "drug_exposure",
+            "drug_concept_id",
+            "drug_exposure_start_date",
+            "drug_exposure_end_date",
+        ),
+        "procedure": ("procedure_occurrence", "procedure_concept_id", "procedure_date", None),
+        "measurement": ("measurement", "measurement_concept_id", "measurement_date", None),
+        "observation": ("observation", "observation_concept_id", "observation_date", None),
+        "visit": ("visit_occurrence", "visit_concept_id", "visit_start_date", "visit_end_date"),
     }
     for d, (table, ccol, scol, ecol) in field.items():
         sub = events[events["domain"] == d].copy()
@@ -725,39 +774,53 @@ def tables_from_events(events: pd.DataFrame, periods: pd.DataFrame,
             tables[table] = pd.DataFrame()
             continue
         sub = sub.sort_values(["person_id", "start_date"]).reset_index(drop=True)
-        out = pd.DataFrame({"person_id": sub["person_id"],
-                            ccol: sub["concept_id"], scol: sub["start_date"]})
+        out = pd.DataFrame(
+            {"person_id": sub["person_id"], ccol: sub["concept_id"], scol: sub["start_date"]}
+        )
         if ecol:
             out[ecol] = sub["end_date"]
         tables[table] = out
 
     # era tables: merge overlapping/adjacent intervals of the same concept
     for d, etable, ecol, oscol, oecol in [
-            ("condition", "condition_era", "condition_concept_id",
-             "condition_era_start_date", "condition_era_end_date"),
-            ("drug", "drug_era", "drug_concept_id",
-             "drug_era_start_date", "drug_era_end_date")]:
+        (
+            "condition",
+            "condition_era",
+            "condition_concept_id",
+            "condition_era_start_date",
+            "condition_era_end_date",
+        ),
+        ("drug", "drug_era", "drug_concept_id", "drug_era_start_date", "drug_era_end_date"),
+    ]:
         src = field[d][0]
         scol = field[d][2]
         ecol_ = field[d][3]
-        era = build_eras(tables[src], ecol, scol, ecol_,
-                         out_start=oscol, out_end=oecol)
+        assert ecol_ is not None
+        era = build_eras(tables[src], ecol, scol, ecol_, out_start=oscol, out_end=oecol)
         # OMOP era-table shape: an id column and the source count column
         era.insert(0, f"{d}_era_id", np.arange(1, len(era) + 1, dtype=np.int64))
         era = era.rename(columns={"occurrence_count": f"{d}_occurrence_count"})
         tables[etable] = era
 
     tables["death"] = death
-    tables["observation_period"] = periods.rename(columns={
-        "start_date": "observation_period_start_date",
-        "end_date": "observation_period_end_date",
-    })
+    tables["observation_period"] = periods.rename(
+        columns={
+            "start_date": "observation_period_start_date",
+            "end_date": "observation_period_end_date",
+        }
+    )
     return tables
 
 
-def build_eras(records: pd.DataFrame, concept_col: str, start_col: str,
-               end_col: str, out_start: str = None, out_end: str = None,
-               gap_days: int = 30):
+def build_eras(
+    records: pd.DataFrame,
+    concept_col: str,
+    start_col: str,
+    end_col: str,
+    out_start: str | None = None,
+    out_end: str | None = None,
+    gap_days: int = 30,
+):
     """Collapse overlapping/adjacent intervals of the same concept into eras.
 
     OMOP merges condition_occurrence rows with the same condition_concept_id
@@ -800,6 +863,7 @@ def build_eras(records: pd.DataFrame, concept_col: str, start_col: str,
 # spectral comparison (reported alongside the summary statistics)
 # --------------------------------------------------------------------------
 
+
 def spectrum(M) -> np.ndarray:
     """Singular values of the degree-normalised incidence matrix.
 
@@ -809,16 +873,16 @@ def spectrum(M) -> np.ndarray:
     M = M if sparse.issparse(M) else sparse.csr_matrix(np.asarray(M, float))
     r = np.asarray(M.sum(1)).ravel()
     c = np.asarray(M.sum(0)).ravel()
-    N = (sparse.diags(1 / np.sqrt(np.maximum(r, 1e-9))) @ M
-         @ sparse.diags(1 / np.sqrt(np.maximum(c, 1e-9))))
+    N = (
+        sparse.diags(1 / np.sqrt(np.maximum(r, 1e-9)))
+        @ M
+        @ sparse.diags(1 / np.sqrt(np.maximum(c, 1e-9)))
+    )
     n, m = N.shape
     # use the smaller Gram matrix: the non-zero singular values are the same,
     # and the zero padding restores the full spectrum. This matters when C is
     # large (MIMIC has ~2,700 clinical concepts for 100 patients).
-    if n <= m:
-        G = (N @ N.T).toarray()
-    else:
-        G = (N.T @ N).toarray()
+    G = (N @ N.T).toarray() if n <= m else (N.T @ N).toarray()
     e = np.sort(np.linalg.eigvalsh(G))[::-1]
     s = np.sqrt(np.maximum(e, 0))
     return np.concatenate([s, np.zeros(max(n, m) - len(s))])

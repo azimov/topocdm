@@ -34,6 +34,7 @@ from scipy import sparse, stats
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 import matplotlib
+
 matplotlib.use("Agg")
 import matplotlib.pyplot as plt
 
@@ -44,13 +45,20 @@ DATA = os.environ.get("MIMIC_DIR", "data/mimic_eunomia")
 FIG, RES = "figs", "results"
 os.makedirs(FIG, exist_ok=True)
 os.makedirs(RES, exist_ok=True)
-plt.rcParams.update({"figure.dpi": 160, "font.size": 9,
-                     "axes.spines.top": False, "axes.spines.right": False,
-                     "axes.grid": True, "grid.alpha": 0.2,
-                     "grid.linewidth": 0.5})
-C = dict(blue="#2C6E9B", orange="#C1440E", ink="#1f2933", grey="#9aa5b1")
+plt.rcParams.update(
+    {
+        "figure.dpi": 160,
+        "font.size": 9,
+        "axes.spines.top": False,
+        "axes.spines.right": False,
+        "axes.grid": True,
+        "grid.alpha": 0.2,
+        "grid.linewidth": 0.5,
+    }
+)
+C = {"blue": "#2C6E9B", "orange": "#C1440E", "ink": "#1f2933", "grey": "#9aa5b1"}
 
-GRAPH_DOMAINS = ("condition", "drug")   # the all-concept graph is near-complete
+GRAPH_DOMAINS = ("condition", "drug")  # the all-concept graph is near-complete
 
 
 def _load_mimic():
@@ -71,8 +79,7 @@ def subject_spectra(records: pd.DataFrame) -> dict:
     than isolated singletons.
     """
     out = {}
-    r = records[records["domain"].isin(GRAPH_DOMAINS)
-                & (records["concept_id"] != 0)].copy()
+    r = records[records["domain"].isin(GRAPH_DOMAINS) & (records["concept_id"] != 0)].copy()
     r["start_date"] = pd.to_datetime(r["start_date"])
     for pid, g in r.groupby("person_id"):
         days = g["start_date"].dt.normalize()
@@ -81,9 +88,8 @@ def subject_spectra(records: pd.DataFrame) -> dict:
         n_days, n_c = dcode.max() + 1, ccode.max() + 1
         if n_c < 5:
             continue
-        B = sparse.csr_matrix((np.ones(len(g)), (dcode, ccode)),
-                              shape=(n_days, n_c))
-        B.data[:] = 1.0                      # binary per (day, concept)
+        B = sparse.csr_matrix((np.ones(len(g)), (dcode, ccode)), shape=(n_days, n_c))
+        B.data[:] = 1.0  # binary per (day, concept)
         A = (B.T @ B).toarray()
         np.fill_diagonal(A, 0.0)
         deg = A.sum(axis=1)
@@ -107,12 +113,11 @@ def _pick(spectra, k, rng, lo=30, hi=250):
     cand = [p for p, e in spectra.items() if lo <= len(e) <= hi]
     if len(cand) < k:
         cand = list(spectra)
-    return [(p, spectra[p]) for p in rng.choice(cand, size=min(k, len(cand)),
-                                                replace=False)]
+    return [(p, spectra[p]) for p in rng.choice(cand, size=min(k, len(cand)), replace=False)]
 
 
 def main():
-    rng = np.random.default_rng(0)
+    np.random.default_rng(0)
     events, periods, visits = _load_mimic()
     fit = va.fit_visitanchor(events, periods, visits)
     sp = pdm.sample_periods(periods, len(periods), np.random.default_rng(1))
@@ -128,7 +133,7 @@ def main():
         n = np.array([len(e) for e in d.values()])
         l2 = np.array([e[1] for e in d.values() if len(e) > 1])
         lmax = np.array([e[-1] for e in d.values()])
-        return dict(n_nodes=n, lambda2=l2, lambda_max=lmax)
+        return {"n_nodes": n, "lambda2": l2, "lambda_max": lmax}
 
     rs, ss = scalars(real), scalars(syn)
     q = np.linspace(0, 1, 50)
@@ -136,35 +141,51 @@ def main():
     S = np.array([_interp(e, q) for e in syn.values()])
     mean_R, mean_S = R.mean(axis=0), S.mean(axis=0)
     l2_dist = float(np.sqrt(np.mean((mean_R - mean_S) ** 2)))
-    ks = float(stats.ks_2samp(np.concatenate(list(real.values())),
-                              np.concatenate(list(syn.values()))).statistic)
+    ks = float(
+        stats.ks_2samp(
+            np.concatenate(list(real.values())), np.concatenate(list(syn.values()))
+        ).statistic
+    )
     print(f"mean-spectrum L2 distance {l2_dist:.3f}; pooled KS {ks:.3f}")
-    print(f"nodes: MIMIC median {np.median(rs['n_nodes']):.0f}, "
-          f"synthetic {np.median(ss['n_nodes']):.0f}")
-    print(f"lambda2: MIMIC median {np.median(rs['lambda2']):.3f}, "
-          f"synthetic {np.median(ss['lambda2']):.3f}")
-    print(f"lambda_max: MIMIC {np.median(rs['lambda_max']):.3f}, "
-          f"synthetic {np.median(ss['lambda_max']):.3f}")
+    print(
+        f"nodes: MIMIC median {np.median(rs['n_nodes']):.0f}, "
+        f"synthetic {np.median(ss['n_nodes']):.0f}"
+    )
+    print(
+        f"lambda2: MIMIC median {np.median(rs['lambda2']):.3f}, "
+        f"synthetic {np.median(ss['lambda2']):.3f}"
+    )
+    print(
+        f"lambda_max: MIMIC {np.median(rs['lambda_max']):.3f}, "
+        f"synthetic {np.median(ss['lambda_max']):.3f}"
+    )
 
-    json.dump(dict(n_real=int(len(real)), n_syn=int(len(syn)),
-                   l2_mean_spectrum=l2_dist, ks_pooled=ks,
-                   nodes_real=float(np.median(rs["n_nodes"])),
-                   nodes_syn=float(np.median(ss["n_nodes"])),
-                   lambda2_real=float(np.median(rs["lambda2"])),
-                   lambda2_syn=float(np.median(ss["lambda2"])),
-                   lambda_max_real=float(np.median(rs["lambda_max"])),
-                   lambda_max_syn=float(np.median(ss["lambda_max"])),
-                   mean_spectrum_real=mean_R.tolist(),
-                   mean_spectrum_syn=mean_S.tolist()),
-              open(f"{RES}/subject_spectra.json", "w"), indent=1)
+    json.dump(
+        {
+            "n_real": int(len(real)),
+            "n_syn": int(len(syn)),
+            "l2_mean_spectrum": l2_dist,
+            "ks_pooled": ks,
+            "nodes_real": float(np.median(rs["n_nodes"])),
+            "nodes_syn": float(np.median(ss["n_nodes"])),
+            "lambda2_real": float(np.median(rs["lambda2"])),
+            "lambda2_syn": float(np.median(ss["lambda2"])),
+            "lambda_max_real": float(np.median(rs["lambda_max"])),
+            "lambda_max_syn": float(np.median(ss["lambda_max"])),
+            "mean_spectrum_real": mean_R.tolist(),
+            "mean_spectrum_syn": mean_S.tolist(),
+        },
+        open(f"{RES}/subject_spectra.json", "w"),
+        indent=1,
+    )
 
     # ---- figure 1: example lines --------------------------------------
     ex_r = _pick(real, 4, np.random.default_rng(7))
     ex_s = _pick(syn, 4, np.random.default_rng(8))
     fig, axes = plt.subplots(2, 4, figsize=(12.0, 5.0), sharey=True)
-    for row, (examples, src, col, lab) in enumerate([
-            (ex_r, "MIMIC", C["blue"], "MIMIC"),
-            (ex_s, "synthetic", C["orange"], "topocdm synthetic")]):
+    for row, (examples, _src, col, lab) in enumerate(
+        [(ex_r, "MIMIC", C["blue"], "MIMIC"), (ex_s, "synthetic", C["orange"], "topocdm synthetic")]
+    ):
         for j, (pid, ev) in enumerate(examples):
             ax = axes[row, j]
             x = np.linspace(0, 1, len(ev))
@@ -173,58 +194,63 @@ def main():
             ax.set_xlabel("rank fraction")
             if j == 0:
                 ax.set_ylabel("normalised Laplacian eigenvalue")
-    fig.suptitle("Subject spectra: condition-drug encounter graph "
-                 "(normalised Laplacian)", fontsize=10)
+    fig.suptitle(
+        "Subject spectra: condition-drug encounter graph (normalised Laplacian)", fontsize=10
+    )
     fig.tight_layout()
-    fig.savefig(f"{FIG}/fig31_subject_spectra_examples.png",
-                bbox_inches="tight")
+    fig.savefig(f"{FIG}/fig31_subject_spectra_examples.png", bbox_inches="tight")
     plt.close(fig)
 
     # ---- figure 2: ensemble -------------------------------------------
     fig, axes = plt.subplots(1, 3, figsize=(11.0, 3.3))
 
     ax = axes[0]
-    for arr, col, lab in [(R, C["blue"], f"MIMIC (n={len(R)})"),
-                          (S, C["orange"], f"synthetic (n={len(S)})")]:
+    for arr, col, lab in [
+        (R, C["blue"], f"MIMIC (n={len(R)})"),
+        (S, C["orange"], f"synthetic (n={len(S)})"),
+    ]:
         ax.plot(q, arr.mean(axis=0), color=col, lw=1.6, label=lab)
-        ax.fill_between(q, np.percentile(arr, 5, axis=0),
-                        np.percentile(arr, 95, axis=0), color=col, alpha=0.18)
+        ax.fill_between(
+            q, np.percentile(arr, 5, axis=0), np.percentile(arr, 95, axis=0), color=col, alpha=0.18
+        )
     ax.set_xlabel("rank fraction")
     ax.set_ylabel("normalised Laplacian eigenvalue")
     ax.set_title(f"A. Mean spectrum (L2 {l2_dist:.2f}, KS {ks:.2f})", fontsize=9)
     ax.legend(fontsize=7, frameon=False)
 
     ax = axes[1]
-    bins = np.linspace(0, max(rs["lambda2"].max(), ss["lambda2"].max()) * 1.05,
-                       25)
-    ax.hist(rs["lambda2"], bins=bins, density=True, alpha=0.55,
-            color=C["blue"], label="MIMIC")
-    ax.hist(ss["lambda2"], bins=bins, density=True, alpha=0.55,
-            color=C["orange"], label="synthetic")
+    bins = np.linspace(0, max(rs["lambda2"].max(), ss["lambda2"].max()) * 1.05, 25)
+    ax.hist(rs["lambda2"], bins=bins, density=True, alpha=0.55, color=C["blue"], label="MIMIC")
+    ax.hist(
+        ss["lambda2"], bins=bins, density=True, alpha=0.55, color=C["orange"], label="synthetic"
+    )
     ax.set_xlabel(r"algebraic connectivity $\lambda_2$")
     ax.set_ylabel("density")
     ax.set_title("B. Second eigenvalue", fontsize=9)
     ax.legend(fontsize=7, frameon=False)
 
     ax = axes[2]
-    bins = np.linspace(min(rs["lambda_max"].min(), ss["lambda_max"].min()) * 0.98,
-                       max(rs["lambda_max"].max(), ss["lambda_max"].max()) * 1.02,
-                       25)
-    ax.hist(rs["lambda_max"], bins=bins, density=True, alpha=0.55,
-            color=C["blue"], label="MIMIC")
-    ax.hist(ss["lambda_max"], bins=bins, density=True, alpha=0.55,
-            color=C["orange"], label="synthetic")
+    bins = np.linspace(
+        min(rs["lambda_max"].min(), ss["lambda_max"].min()) * 0.98,
+        max(rs["lambda_max"].max(), ss["lambda_max"].max()) * 1.02,
+        25,
+    )
+    ax.hist(rs["lambda_max"], bins=bins, density=True, alpha=0.55, color=C["blue"], label="MIMIC")
+    ax.hist(
+        ss["lambda_max"], bins=bins, density=True, alpha=0.55, color=C["orange"], label="synthetic"
+    )
     ax.set_xlabel(r"largest eigenvalue $\lambda_n$")
     ax.set_ylabel("density")
     ax.set_title("C. Largest eigenvalue", fontsize=9)
     ax.legend(fontsize=7, frameon=False)
 
     fig.tight_layout()
-    fig.savefig(f"{FIG}/fig32_subject_spectra_ensemble.png",
-                bbox_inches="tight")
+    fig.savefig(f"{FIG}/fig32_subject_spectra_ensemble.png", bbox_inches="tight")
     plt.close(fig)
-    print(f"wrote {FIG}/fig31_subject_spectra_examples.png and "
-          f"{FIG}/fig32_subject_spectra_ensemble.png")
+    print(
+        f"wrote {FIG}/fig31_subject_spectra_examples.png and "
+        f"{FIG}/fig32_subject_spectra_ensemble.png"
+    )
 
 
 if __name__ == "__main__":

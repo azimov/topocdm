@@ -11,18 +11,21 @@ from topocdm import perdomain as pdm
 def _synthetic(n=500, seed=0):
     """A small CDM-shaped extract: intervals, points, and a death."""
     rng = np.random.default_rng(seed)
-    periods = pd.DataFrame({
-        "person_id": np.arange(1, n + 1),
-        "start_date": pd.Timestamp("2020-01-01"),
-        "end_date": pd.Timestamp("2024-12-31"),
-    })
+    periods = pd.DataFrame(
+        {
+            "person_id": np.arange(1, n + 1),
+            "start_date": pd.Timestamp("2020-01-01"),
+            "end_date": pd.Timestamp("2024-12-31"),
+        }
+    )
     # per-patient contact volume
     u = rng.gamma(2.0, 0.5, size=n)
     rows = []
     for dom, concepts, is_interval in [
-            ("condition", [100, 101, 102], True),
-            ("drug", [200, 201], True),
-            ("measurement", [300, 301], False)]:
+        ("condition", [100, 101, 102], True),
+        ("drug", [200, 201], True),
+        ("measurement", [300, 301], False),
+    ]:
         probs = np.ones(len(concepts)) / len(concepts)
         for i in range(n):
             k = rng.poisson(3.0 * u[i])
@@ -30,11 +33,11 @@ def _synthetic(n=500, seed=0):
                 c = int(rng.choice(concepts, p=probs))
                 day = rng.integers(0, 5 * 365 - 1)
                 s = pd.Timestamp("2020-01-01") + pd.Timedelta(days=int(day))
-                e = s + pd.Timedelta(days=int(rng.integers(0, 800))) \
-                    if is_interval else pd.NaT
+                e = s + pd.Timedelta(days=int(rng.integers(0, 800))) if is_interval else pd.NaT
                 rows.append((i + 1, dom, c, s, e))
-    events = pd.DataFrame(rows, columns=["person_id", "domain", "concept_id",
-                                         "start_date", "end_date"])
+    events = pd.DataFrame(
+        rows, columns=["person_id", "domain", "concept_id", "start_date", "end_date"]
+    )
     return events, periods
 
 
@@ -43,13 +46,15 @@ def test_duration_mixture_recovers_zero_mass():
     n = 5000
     zero = rng.random(n) < 0.2
     d = np.where(zero, 0, np.round(rng.lognormal(5.9, 0.3, size=n))).astype(int)
-    ev = pd.DataFrame({
-        "person_id": np.arange(n),
-        "domain": "condition",
-        "concept_id": 1,
-        "start_date": pd.Timestamp("2020-01-01"),
-        "end_date": pd.Timestamp("2020-01-01") + pd.to_timedelta(d, unit="D"),
-    })
+    ev = pd.DataFrame(
+        {
+            "person_id": np.arange(n),
+            "domain": "condition",
+            "concept_id": 1,
+            "start_date": pd.Timestamp("2020-01-01"),
+            "end_date": pd.Timestamp("2020-01-01") + pd.to_timedelta(d, unit="D"),
+        }
+    )
     dur = pdm.fit_durations(ev, "condition")
     assert abs(dur["pi0"] - 0.2) < 0.03
     # sampled median should be near the log-normal median, exp(5.9) ~ 365
@@ -58,18 +63,26 @@ def test_duration_mixture_recovers_zero_mass():
 
 
 def test_build_eras_merges_overlapping_and_adjacent():
-    df = pd.DataFrame({
-        "person_id": [1, 1, 1, 2],
-        "condition_concept_id": [9, 9, 9, 9],
-        "condition_start_date": pd.to_datetime(
-            ["2020-01-01", "2020-02-01", "2020-06-01", "2020-01-01"]),
-        "condition_end_date": pd.to_datetime(
-            ["2020-02-15", "2020-03-01", "2020-06-10", "2020-01-10"]),
-    })
-    era = pdm.build_eras(df, "condition_concept_id", "condition_start_date",
-                         "condition_end_date",
-                         out_start="condition_era_start_date",
-                         out_end="condition_era_end_date")
+    df = pd.DataFrame(
+        {
+            "person_id": [1, 1, 1, 2],
+            "condition_concept_id": [9, 9, 9, 9],
+            "condition_start_date": pd.to_datetime(
+                ["2020-01-01", "2020-02-01", "2020-06-01", "2020-01-01"]
+            ),
+            "condition_end_date": pd.to_datetime(
+                ["2020-02-15", "2020-03-01", "2020-06-10", "2020-01-10"]
+            ),
+        }
+    )
+    era = pdm.build_eras(
+        df,
+        "condition_concept_id",
+        "condition_start_date",
+        "condition_end_date",
+        out_start="condition_era_start_date",
+        out_end="condition_era_end_date",
+    )
     # patient 1: first two merge (overlap), third is >30d after -> 2 eras
     assert len(era[era.person_id == 1]) == 2
     assert len(era[era.person_id == 2]) == 1
@@ -79,8 +92,9 @@ def test_build_eras_merges_overlapping_and_adjacent():
 
 def test_marginals_recover_known_structure():
     from scipy import sparse
+
     rng = np.random.default_rng(0)
-    n, c = 400, 6
+    n, _c = 400, 6
     T = np.full(n, 5.0)
     u = rng.gamma(2.0, 0.5, size=n)
     lam = np.array([0.5, 0.3, 0.2, 0.1, 0.05, 0.02])
@@ -101,14 +115,20 @@ def test_fit_generate_and_eras():
     assert np.isfinite(fit.eta).all()
     syn_periods = pdm.sample_periods(periods, 500, np.random.default_rng(1))
     tables = pdm.generate_cohort(fit, 500, syn_periods, seed=2)
-    for name in ("condition_occurrence", "drug_exposure", "measurement",
-                 "condition_era", "drug_era"):
+    for name in (
+        "condition_occurrence",
+        "drug_exposure",
+        "measurement",
+        "condition_era",
+        "drug_era",
+    ):
         assert name in tables
     assert len(tables["condition_occurrence"]) > 0
     # every generated interval is a valid pair
     c = tables["condition_occurrence"]
-    assert (pd.to_datetime(c["condition_end_date"])
-            >= pd.to_datetime(c["condition_start_date"])).all()
+    assert (
+        pd.to_datetime(c["condition_end_date"]) >= pd.to_datetime(c["condition_start_date"])
+    ).all()
     # era tables are populated and no era is shorter than its source interval
     assert len(tables["condition_era"]) > 0
 
@@ -134,8 +154,10 @@ def test_spectrum_matches_normalised_svd():
     rng = np.random.default_rng(0)
     M = rng.poisson(3.0, size=(40, 15)).astype(float)
     from scipy import sparse
+
     s = pdm.spectrum(sparse.csr_matrix(M))
-    r = M.sum(1); c = M.sum(0)
+    r = M.sum(1)
+    c = M.sum(0)
     N = M / np.sqrt(np.outer(r, c))
     s_ref = np.linalg.svd(N, compute_uv=False)
     k = len(s_ref)
@@ -152,10 +174,13 @@ def test_multiple_observation_periods_per_person():
     """
     events, periods = _synthetic(n=200, seed=2)
     mid = periods["start_date"] + (periods["end_date"] - periods["start_date"]) / 2
-    periods2 = pd.concat([
-        periods.assign(end_date=mid),
-        periods.assign(start_date=mid),
-    ], ignore_index=True)
+    periods2 = pd.concat(
+        [
+            periods.assign(end_date=mid),
+            periods.assign(start_date=mid),
+        ],
+        ignore_index=True,
+    )
 
     ad, ac, idx = pdm.build_atoms(events)
     X, T, persons = pdm.build_counts(events, periods2, ad, ac, idx)

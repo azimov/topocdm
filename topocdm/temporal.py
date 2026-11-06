@@ -39,21 +39,23 @@ import pandas as pd
 
 @dataclass
 class TemporalProfile:
-    years: np.ndarray                 # calendar years covered (int)
-    tau: np.ndarray                   # event intensity multiplier per year
-    visit_rate: np.ndarray            # visits per person-year per year
+    years: np.ndarray  # calendar years covered (int)
+    tau: np.ndarray  # event intensity multiplier per year
+    visit_rate: np.ndarray  # visits per person-year per year
     events_per_visit: float = 2.0
     meta: dict = field(default_factory=dict)
 
     def summary(self) -> dict:
-        return dict(years=[int(y) for y in self.years],
-                    tau_mean=float(self.tau.mean()),
-                    tau_max=float(self.tau.max()),
-                    visit_rate_mean=float(self.visit_rate.mean()),
-                    events_per_visit=float(self.events_per_visit))
+        return {
+            "years": [int(y) for y in self.years],
+            "tau_mean": float(self.tau.mean()),
+            "tau_max": float(self.tau.max()),
+            "visit_rate_mean": float(self.visit_rate.mean()),
+            "events_per_visit": float(self.events_per_visit),
+        }
 
 
-def year_exposure(periods: pd.DataFrame, years: np.ndarray) -> np.ndarray:
+def year_exposure(periods: pd.DataFrame, years: np.ndarray) -> tuple[np.ndarray, dict[int, int]]:
     """Person-time observed in each calendar year.
 
     periods: person_id, start_date, end_date (as datetime64)
@@ -66,7 +68,7 @@ def year_exposure(periods: pd.DataFrame, years: np.ndarray) -> np.ndarray:
     out = np.zeros((len(persons), len(years)))
     for k, y in enumerate(years):
         ys = np.datetime64(f"{y}-01-01", "D")
-        ye = np.datetime64(f"{y+1}-01-01", "D")
+        ye = np.datetime64(f"{y + 1}-01-01", "D")
         lo = np.maximum(s, ys)
         hi = np.minimum(e, ye)
         days = np.clip((hi - lo) / np.timedelta64(1, "D"), 0, None)
@@ -74,9 +76,14 @@ def year_exposure(periods: pd.DataFrame, years: np.ndarray) -> np.ndarray:
     return out, rows
 
 
-def fit_temporal(events: pd.DataFrame, visits: pd.DataFrame,
-                 periods: pd.DataFrame, params, years: np.ndarray,
-                 concept_ids: np.ndarray) -> TemporalProfile:
+def fit_temporal(
+    events: pd.DataFrame,
+    visits: pd.DataFrame,
+    periods: pd.DataFrame,
+    params,
+    years: np.ndarray,
+    concept_ids: np.ndarray,
+) -> TemporalProfile:
     """Estimate tau_y and the visit rate by indirect standardisation.
 
     events: person_id, concept_id (must be columns of the fitted model)
@@ -94,11 +101,11 @@ def fit_temporal(events: pd.DataFrame, visits: pd.DataFrame,
     else:
         # use each person's fitted group; an average over groups would distort
         # tau_y and push the synthetic calendar profile towards the mean
-        grp = np.asarray(params.patient_group)[:len(persons)]
+        grp = np.asarray(params.patient_group)[: len(persons)]
         Lam = (params.B @ lam_h)[grp]
     u = np.asarray(params.u, dtype=float)
-    rate = u * Lam                                   # events per person-year
-    expected = expo * rate[:, None]                  # (n, Y)
+    rate = u * Lam  # events per person-year
+    expected = expo * rate[:, None]  # (n, Y)
 
     # observed events per person per year
     ey = events["event_date"].dt.year.to_numpy()
@@ -126,16 +133,19 @@ def fit_temporal(events: pd.DataFrame, visits: pd.DataFrame,
     vok = np.isfinite(vpid.astype(float))
     vobs = np.zeros(len(years))
     idx = np.searchsorted(years, vy[vok])
-    good = (idx >= 0) & (idx < len(years)) & (years[np.clip(idx, 0, len(years)-1)] == vy[vok])
+    good = (idx >= 0) & (idx < len(years)) & (years[np.clip(idx, 0, len(years) - 1)] == vy[vok])
     np.add.at(vobs, idx[good], 1.0)
     pt_y = expo.sum(axis=0)
     visit_rate = np.where(pt_y > 0, vobs / np.maximum(pt_y, 1e-9), 0.0)
 
     epv = float(len(events) / max(len(visits), 1))
-    return TemporalProfile(years=np.asarray(years), tau=tau,
-                           visit_rate=visit_rate, events_per_visit=epv,
-                           meta=dict(n_events_in_window=int(inside.sum()),
-                                     observed_years=obs_y.tolist()))
+    return TemporalProfile(
+        years=np.asarray(years),
+        tau=tau,
+        visit_rate=visit_rate,
+        events_per_visit=epv,
+        meta={"n_events_in_window": int(inside.sum()), "observed_years": obs_y.tolist()},
+    )
 
 
 def sample_periods(periods: pd.DataFrame, n: int, rng) -> pd.DataFrame:
@@ -147,15 +157,18 @@ def sample_periods(periods: pd.DataFrame, n: int, rng) -> pd.DataFrame:
     d = (periods["end_date"] - periods["start_date"]).dt.days.to_numpy()
     s = periods["start_date"].to_numpy(dtype="datetime64[D]")
     pick = rng.integers(0, len(periods), size=n)
-    return pd.DataFrame({
-        "person_id": np.arange(1, n + 1),
-        "start_date": pd.to_datetime(s[pick]),
-        "end_date": pd.to_datetime(s[pick] + d[pick].astype("timedelta64[D]")),
-    })
+    return pd.DataFrame(
+        {
+            "person_id": np.arange(1, n + 1),
+            "start_date": pd.to_datetime(s[pick]),
+            "end_date": pd.to_datetime(s[pick] + d[pick].astype("timedelta64[D]")),
+        }
+    )
 
 
-def generate_dated(release, n_patients: int, periods: pd.DataFrame,
-                   profile: TemporalProfile, rng=None):
+def generate_dated(
+    release, n_patients: int, periods: pd.DataFrame, profile: TemporalProfile, rng=None
+):
     """Generate visits and dated events for a synthetic cohort.
 
     Returns (visits, events) DataFrames with OMOP-ready columns:
@@ -176,7 +189,8 @@ def generate_dated(release, n_patients: int, periods: pd.DataFrame,
     H = int(release.concept_group.max()) + 1
     lam_h = np.bincount(release.concept_group, weights=release.lam, minlength=H)
     if release.B is None:
-        Lam = np.full(n, lam_h.sum()); g = np.zeros(n, dtype=int)
+        Lam = np.full(n, lam_h.sum())
+        g = np.zeros(n, dtype=int)
     else:
         g = rng.choice(release.B.shape[0], size=n, p=release.pi)
         Lam = (release.B @ lam_h)[g]
@@ -186,7 +200,7 @@ def generate_dated(release, n_patients: int, periods: pd.DataFrame,
     n_visits = rng.poisson(mu_visits)
 
     visit_rows = []
-    visit_index = {}          # (person, year) -> list of visit ids
+    visit_index = {}  # (person, year) -> list of visit ids
     vid = 0
     for i in range(n):
         for kk, y in enumerate(years):
@@ -198,25 +212,28 @@ def generate_dated(release, n_patients: int, periods: pd.DataFrame,
             dates = pd.to_datetime(ys + day.astype("timedelta64[D]"))
             ids = np.arange(vid, vid + v)
             vid += v
-            visit_rows.append(pd.DataFrame({"visit_occurrence_id": ids,
-                                            "person_id": i + 1,
-                                            "visit_date": dates}))
+            visit_rows.append(
+                pd.DataFrame({"visit_occurrence_id": ids, "person_id": i + 1, "visit_date": dates})
+            )
             visit_index[(i, kk)] = ids
-    visits = (pd.concat(visit_rows, ignore_index=True)
-              if visit_rows else pd.DataFrame(columns=["visit_occurrence_id", "person_id", "visit_date"]))
+    visits = (
+        pd.concat(visit_rows, ignore_index=True)
+        if visit_rows
+        else pd.DataFrame(columns=["visit_occurrence_id", "person_id", "visit_date"])
+    )
 
     # events per person per year, allocated over concepts and dated at a visit
     mu_events = expo * (u * Lam)[:, None] * profile.tau[None, :]
     counts = rng.poisson(mu_events)
 
-    vdates = {}
+    vdates_by_key: dict[tuple[int, int], list] = {}
     if len(visits):
         vp = visits["person_id"].to_numpy()
         vy = pd.to_datetime(visits["visit_date"]).dt.year.to_numpy()
         vl = visits["visit_date"].to_numpy()
         for ptr, yr, dt in zip(vp, vy, vl):
-            vdates.setdefault((int(ptr) - 1, int(yr)), []).append(dt)
-    vdates = {k: np.array(v) for k, v in vdates.items()}
+            vdates_by_key.setdefault((int(ptr) - 1, int(yr)), []).append(dt)
+    vdates = {k: np.array(v) for k, v in vdates_by_key.items()}
 
     rows = []
     for i in range(n):
@@ -224,7 +241,11 @@ def generate_dated(release, n_patients: int, periods: pd.DataFrame,
             c = int(counts[i, kk])
             if c == 0:
                 continue
-            q = release.lam if release.B is None else release.lam * release.B[g[i], release.concept_group]
+            q = (
+                release.lam
+                if release.B is None
+                else release.lam * release.B[g[i], release.concept_group]
+            )
             draw = rng.multinomial(c, q / q.sum())
             nz = np.nonzero(draw)[0]
             if nz.size == 0:
@@ -272,26 +293,33 @@ def month_exposure(periods: pd.DataFrame, months, persons) -> np.ndarray:
     for k, mo in enumerate(months):
         lo = np.datetime64(f"{mo.year}-{mo.month:02d}-01", "D")
         hi = np.datetime64(mo.to_timestamp(how="end").date(), "D") + np.timedelta64(1, "D")
-        a = np.maximum(s, lo); b = np.minimum(e, hi)
+        a = np.maximum(s, lo)
+        b = np.minimum(e, hi)
         days = np.clip((b - a) / np.timedelta64(1, "D"), 0, None)
         out[:, k] = days / 365.25
     return out
 
 
-def fit_seasonality(events: pd.DataFrame, periods: pd.DataFrame, params,
-                    years, concept_group: np.ndarray, concept_ids: np.ndarray):
+def fit_seasonality(
+    events: pd.DataFrame,
+    periods: pd.DataFrame,
+    params,
+    years,
+    concept_group: np.ndarray,
+    concept_ids: np.ndarray,
+):
     """Fit tau[concept_group, month] by indirect standardisation."""
     H = int(concept_group.max()) + 1
     months = month_list(years)
     persons = periods["person_id"].to_numpy()
-    expo = month_exposure(periods, months, persons)          # (N, M)
+    expo = month_exposure(periods, months, persons)  # (N, M)
 
     lam_h = np.bincount(concept_group, weights=params.lam, minlength=H)
-    grp_p = np.asarray(params.patient_group)[:len(persons)]
+    grp_p = np.asarray(params.patient_group)[: len(persons)]
     B = params.B if params.B is not None else np.ones((1, H))
     if params.B is None:
         grp_p = np.zeros(len(persons), dtype=int)
-    u = np.asarray(params.u, dtype=float)[:len(persons)]
+    u = np.asarray(params.u, dtype=float)[: len(persons)]
     # expected events for group h in month m: sum_i T_i(m) u_i lam_h B[g_i,h]
     exp_hm = np.einsum("im,i,ih->hm", expo, u, B[grp_p] * lam_h[None, :])
 

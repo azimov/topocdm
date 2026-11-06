@@ -27,25 +27,38 @@ import numpy as np
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 import matplotlib
+
 matplotlib.use("Agg")
 import matplotlib.pyplot as plt
 
 import topocdm as t
+from topocdm.evaluate import cooccurrence, predictive_loglik_nb, prevalence
 from topocdm.io import load_incidence
 from topocdm.model import CDMIncidence, Params
-from topocdm.scalable import (fit_streaming, array_chunks,
-                              fit_propensity_streaming)
 from topocdm.release import make_release, sample_release
-from topocdm.evaluate import predictive_loglik_nb, cooccurrence, prevalence
+from topocdm.scalable import array_chunks, fit_propensity_streaming, fit_streaming
 
 FIG, RES = "figs", "results"
 os.makedirs(FIG, exist_ok=True)
 os.makedirs(RES, exist_ok=True)
-plt.rcParams.update({"figure.dpi": 160, "font.size": 9,
-                     "axes.spines.top": False, "axes.spines.right": False,
-                     "axes.grid": True, "grid.alpha": 0.25})
-C = dict(blue="#2C6E9B", orange="#D9822B", green="#4E8B4A",
-         red="#B4443C", purple="#6B5B95", grey="#8A8A8A")
+plt.rcParams.update(
+    {
+        "figure.dpi": 160,
+        "font.size": 9,
+        "axes.spines.top": False,
+        "axes.spines.right": False,
+        "axes.grid": True,
+        "grid.alpha": 0.25,
+    }
+)
+C = {
+    "blue": "#2C6E9B",
+    "orange": "#D9822B",
+    "green": "#4E8B4A",
+    "red": "#B4443C",
+    "purple": "#6B5B95",
+    "grey": "#8A8A8A",
+}
 
 
 def dense(d):
@@ -54,17 +67,24 @@ def dense(d):
 
 def marginals_only(d):
     lam = np.asarray(d.X.sum(axis=0)).ravel() / d.T.sum()
-    return Params(u=np.ones(d.n), lam=lam, B=None,
-                  patient_group=np.zeros(d.n, dtype=int),
-                  concept_group=d.concept_group.copy(), n_groups=1)
+    return Params(
+        u=np.ones(d.n),
+        lam=lam,
+        B=None,
+        patient_group=np.zeros(d.n, dtype=int),
+        concept_group=d.concept_group.copy(),
+        n_groups=1,
+    )
 
 
 def main():
     t0 = time.time()
     data, groups, cv = load_incidence()
-    print(f"loaded {data.n:,} patients x {data.c:,} concepts, "
-          f"{data.total:,} events, {data.density:.2f}/person-year "
-          f"({time.time()-t0:.1f}s)")
+    print(
+        f"loaded {data.n:,} patients x {data.c:,} concepts, "
+        f"{data.total:,} events, {data.density:.2f}/person-year "
+        f"({time.time() - t0:.1f}s)"
+    )
 
     rng = np.random.default_rng(0)
     idx = rng.permutation(data.n)
@@ -78,43 +98,60 @@ def main():
     dense_te = dense(te)
     table = []
     for G in [1, 4, 8, 15, 25]:
-        st = fit_streaming(array_chunks(tr, chunk_size=2000), n=tr.n, c=tr.c,
-                           concept_group=tr.concept_group, n_groups=G,
-                           n_epochs=8, init_sample=4000)
+        st = fit_streaming(
+            array_chunks(tr, chunk_size=2000),
+            n=tr.n,
+            c=tr.c,
+            concept_group=tr.concept_group,
+            n_groups=G,
+            n_epochs=8,
+            init_sample=4000,
+        )
         k = fit_propensity_streaming(array_chunks(tr, 2000), st.params)
-        held = predictive_loglik_nb(dense_te, st.params, k,
-                                    marginalise_groups=(G > 1))
-        table.append(dict(G=G, heldout=float(held)))
+        held = predictive_loglik_nb(dense_te, st.params, k, marginalise_groups=(G > 1))
+        table.append({"G": G, "heldout": float(held)})
         print(f"  G={G:2d}  held-out loglik/event {held:.4f}")
 
     best = max(table, key=lambda r: r["heldout"])
     G_hat = best["G"]
-    gains = [table[i + 1]["heldout"] - table[i]["heldout"]
-             for i in range(len(table) - 1)]
-    print(f"  held-out improves monotonically; marginal gain at G={G_hat} "
-          f"is {gains[-1]:+.4f}")
+    gains = [table[i + 1]["heldout"] - table[i]["heldout"] for i in range(len(table) - 1)]
+    print(f"  held-out improves monotonically; marginal gain at G={G_hat} is {gains[-1]:+.4f}")
 
     # ---- final fit and release
-    st = fit_streaming(array_chunks(tr, chunk_size=2000), n=tr.n, c=tr.c,
-                       concept_group=tr.concept_group, n_groups=G_hat,
-                       n_epochs=12, init_sample=5000)
+    st = fit_streaming(
+        array_chunks(tr, chunk_size=2000),
+        n=tr.n,
+        c=tr.c,
+        concept_group=tr.concept_group,
+        n_groups=G_hat,
+        n_epochs=12,
+        init_sample=5000,
+    )
     k = fit_propensity_streaming(array_chunks(tr, 2000), st.params)
-    rel = make_release(st.params, tr.concept_ids, tr.concept_group, k,
-                       tr.density, n_patients=tr.n, n_events=tr.total)
+    rel = make_release(
+        st.params,
+        tr.concept_ids,
+        tr.concept_group,
+        k,
+        tr.density,
+        n_patients=tr.n,
+        n_events=tr.total,
+    )
     print(f"  release: {rel.summary()}")
 
     # ---- generate and compare against held-out patients
     out = {}
-    for label, params, dist in [
-            ("topology", rel, None),
-            ("marginals", None, None)]:
+    for label, _params, _dist in [("topology", rel, None), ("marginals", None, None)]:
         if label == "topology":
-            syn = sample_release(rel, n_patients=te.n, density=te.density,
-                                 person_time=te.T,
-                                 rng=np.random.default_rng(1))
+            syn = sample_release(
+                rel,
+                n_patients=te.n,
+                density=te.density,
+                person_time=te.T,
+                rng=np.random.default_rng(1),
+            )
             cmp = t.compare(dense(te), dense(syn))
-            held = predictive_loglik_nb(dense_te, st.params, k,
-                                        marginalise_groups=True)
+            held = predictive_loglik_nb(dense_te, st.params, k, marginalise_groups=True)
         else:
             p = marginals_only(tr)
             X = np.zeros((te.n, te.c))
@@ -125,32 +162,47 @@ def main():
             syn = CDMIncidence(X=X, T=te.T, concept_group=te.concept_group)
             cmp = t.compare(dense(te), syn)
             held = predictive_loglik_nb(dense_te, p, k, marginalise_groups=False)
-        out[label] = dict(cmp=cmp, heldout=float(held))
-        print(f"  {label:10s} prev r={cmp['prevalence']['r']:.4f} "
-              f"slope={cmp['prevalence']['slope']:.3f} | "
-              f"inc r={cmp['incidence']['r']:.4f} slope={cmp['incidence']['slope']:.3f} | "
-              f"deg {np.round(cmp['degree_mean'],1)} L1={cmp['degree_l1']:.3f} | "
-              f"cooc r={cmp['cooccurrence_r']:.3f} | held {held:.4f}")
+        out[label] = {"cmp": cmp, "heldout": float(held)}
+        print(
+            f"  {label:10s} prev r={cmp['prevalence']['r']:.4f} "
+            f"slope={cmp['prevalence']['slope']:.3f} | "
+            f"inc r={cmp['incidence']['r']:.4f} slope={cmp['incidence']['slope']:.3f} | "
+            f"deg {np.round(cmp['degree_mean'], 1)} L1={cmp['degree_l1']:.3f} | "
+            f"cooc r={cmp['cooccurrence_r']:.3f} | held {held:.4f}"
+        )
 
-    json.dump(dict(selection=table, G_hat=G_hat,
-                   release=rel.summary(),
-                   results={k2: dict(prevalence=v["cmp"]["prevalence"],
-                                     incidence=v["cmp"]["incidence"],
-                                     degree_mean=v["cmp"]["degree_mean"],
-                                     degree_l1=v["cmp"]["degree_l1"],
-                                     cooccurrence_r=v["cmp"]["cooccurrence_r"],
-                                     heldout=v["heldout"])
-                            for k2, v in out.items()},
-                   data=dict(n=int(data.n), c=int(data.c),
-                             events=int(data.total), density=float(data.density))),
-              open(f"{RES}/real_cdm.json", "w"), indent=1)
+    json.dump(
+        {
+            "selection": table,
+            "G_hat": G_hat,
+            "release": rel.summary(),
+            "results": {
+                k2: {
+                    "prevalence": v["cmp"]["prevalence"],
+                    "incidence": v["cmp"]["incidence"],
+                    "degree_mean": v["cmp"]["degree_mean"],
+                    "degree_l1": v["cmp"]["degree_l1"],
+                    "cooccurrence_r": v["cmp"]["cooccurrence_r"],
+                    "heldout": v["heldout"],
+                }
+                for k2, v in out.items()
+            },
+            "data": {
+                "n": int(data.n),
+                "c": int(data.c),
+                "events": int(data.total),
+                "density": float(data.density),
+            },
+        },
+        open(f"{RES}/real_cdm.json", "w"),
+        indent=1,
+    )
 
     # ---------------------------------------------------------------- figure
     fig, axes = plt.subplots(1, 3, figsize=(9.6, 2.9))
 
     ax = axes[0]
-    ax.plot([r["G"] for r in table], [r["heldout"] for r in table],
-            "o-", color=C["blue"], ms=4)
+    ax.plot([r["G"] for r in table], [r["heldout"] for r in table], "o-", color=C["blue"], ms=4)
     ax.axvline(G_hat, color=C["red"], ls="--", lw=1.0)
     ax.set_xlabel("patient groups fitted")
     ax.set_ylabel("held-out log-lik per event")
@@ -158,15 +210,18 @@ def main():
 
     ax = axes[1]
     d_real = np.sort(np.asarray(te.X.sum(1)).ravel())[::-1]
-    syn = sample_release(rel, n_patients=te.n, person_time=te.T,
-                         rng=np.random.default_rng(3))
+    syn = sample_release(rel, n_patients=te.n, person_time=te.T, rng=np.random.default_rng(3))
     d_syn = np.sort(np.asarray(syn.X.sum(1)).ravel())[::-1]
-    for arr, col, lab in [(d_real, C["blue"], "held-out patients"),
-                          (d_syn, C["orange"], "synthetic")]:
+    for arr, col, lab in [
+        (d_real, C["blue"], "held-out patients"),
+        (d_syn, C["orange"], "synthetic"),
+    ]:
         arr = arr[arr > 0]
         ax.plot(arr, np.arange(1, arr.size + 1) / arr.size, color=col, lw=1.3, label=lab)
-    ax.set_xscale("log"); ax.set_yscale("log")
-    ax.set_xlabel("events per patient"); ax.set_ylabel(r"$P(K \geq k)$")
+    ax.set_xscale("log")
+    ax.set_yscale("log")
+    ax.set_xlabel("events per patient")
+    ax.set_ylabel(r"$P(K \geq k)$")
     ax.legend(fontsize=7, frameon=False)
     ax.set_title("Degree distribution is reproduced", fontsize=9)
 
@@ -178,8 +233,12 @@ def main():
     ax.scatter(real_c, syn_c, s=8, color=C["green"], alpha=0.6)
     lim = [0, max(real_c.max(), syn_c.max()) * 1.05]
     ax.plot(lim, lim, "k:", lw=0.8)
-    ax.set_xlabel("Synthea co-occurrence"); ax.set_ylabel("synthetic")
-    ax.set_title(f"Co-occurrence is only partly reproduced (r={np.corrcoef(real_c, syn_c)[0,1]:.2f})", fontsize=9)
+    ax.set_xlabel("Synthea co-occurrence")
+    ax.set_ylabel("synthetic")
+    ax.set_title(
+        f"Co-occurrence is only partly reproduced (r={np.corrcoef(real_c, syn_c)[0, 1]:.2f})",
+        fontsize=9,
+    )
 
     fig.tight_layout()
     fig.savefig(f"{FIG}/fig11_real_cdm.png", bbox_inches="tight")

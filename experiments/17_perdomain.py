@@ -32,23 +32,37 @@ import pandas as pd
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 import matplotlib
+
 matplotlib.use("Agg")
 import matplotlib.pyplot as plt
 
-import topocdm as t
 from topocdm import perdomain as pdm
+from topocdm.evaluate import compare, prevalence
 from topocdm.model import CDMIncidence
-from topocdm.evaluate import compare, prevalence, incidence, degree
 
 FIG, RES = "figs", "results"
 os.makedirs(FIG, exist_ok=True)
 os.makedirs(RES, exist_ok=True)
-plt.rcParams.update({"figure.dpi": 160, "font.size": 9,
-                     "axes.spines.top": False, "axes.spines.right": False,
-                     "axes.grid": True, "grid.alpha": 0.22,
-                     "grid.linewidth": 0.5})
-C = dict(ink="#1f2933", blue="#2C6E9B", orange="#C1440E", green="#4E8B4A",
-         grey="#9aa5b1", red="#B4443C", purple="#6B5B95")
+plt.rcParams.update(
+    {
+        "figure.dpi": 160,
+        "font.size": 9,
+        "axes.spines.top": False,
+        "axes.spines.right": False,
+        "axes.grid": True,
+        "grid.alpha": 0.22,
+        "grid.linewidth": 0.5,
+    }
+)
+C = {
+    "ink": "#1f2933",
+    "blue": "#2C6E9B",
+    "orange": "#C1440E",
+    "green": "#4E8B4A",
+    "grey": "#9aa5b1",
+    "red": "#B4443C",
+    "purple": "#6B5B95",
+}
 
 
 def _matrix_for(records, periods, concept_ids):
@@ -60,8 +74,8 @@ def _matrix_for(records, periods, concept_ids):
     rows = ev["person_id"].map(prow).to_numpy(dtype=np.int64)
     cols = ev["concept_id"].map(ccol).to_numpy(dtype=np.int64)
     from scipy import sparse
-    X = sparse.csr_matrix((np.ones(len(ev)), (rows, cols)),
-                          shape=(len(persons), len(concept_ids)))
+
+    X = sparse.csr_matrix((np.ones(len(ev)), (rows, cols)), shape=(len(persons), len(concept_ids)))
     X.sum_duplicates()
     return X
 
@@ -72,9 +86,11 @@ def main():
     print(f"loaded {len(events):,} records, {len(periods):,} persons")
 
     fit = pdm.fit_perdomain(events, periods, K=20)
-    print(f"fitted in {time.time() - t0:.1f}s: k={fit.k:.2f}, "
-          f"propensity_tmean={fit.propensity_tmean:.2f}, "
-          f"death={fit.death['frac']:.3f}, n_params={fit.n_parameters:,}")
+    print(
+        f"fitted in {time.time() - t0:.1f}s: k={fit.k:.2f}, "
+        f"propensity_tmean={fit.propensity_tmean:.2f}, "
+        f"death={fit.death['frac']:.3f}, n_params={fit.n_parameters:,}"
+    )
 
     # ---- generate a cohort on resampled follow-up ----
     rng = np.random.default_rng(1)
@@ -83,34 +99,41 @@ def main():
 
     # ---- level check (before any interpretation) ----
     level = {}
-    for table, dom in [("condition_occurrence", "condition"),
-                       ("drug_exposure", "drug"),
-                       ("procedure_occurrence", "procedure"),
-                       ("measurement", "measurement"),
-                       ("observation", "observation"),
-                       ("visit_occurrence", "visit")]:
+    for table, dom in [
+        ("condition_occurrence", "condition"),
+        ("drug_exposure", "drug"),
+        ("procedure_occurrence", "procedure"),
+        ("measurement", "measurement"),
+        ("observation", "observation"),
+        ("visit_occurrence", "visit"),
+    ]:
         gen = len(tables[table])
         obs = fit.n_events[dom]
-        level[dom] = dict(observed=obs, generated=gen, ratio=gen / max(obs, 1))
-    level["death"] = dict(observed=fit.meta["n_deaths"],
-                          generated=len(tables["death"]),
-                          ratio=len(tables["death"]) / max(fit.meta["n_deaths"], 1))
+        level[dom] = {"observed": obs, "generated": gen, "ratio": gen / max(obs, 1)}
+    level["death"] = {
+        "observed": fit.meta["n_deaths"],
+        "generated": len(tables["death"]),
+        "ratio": len(tables["death"]) / max(fit.meta["n_deaths"], 1),
+    }
     print("\nlevel check (generated / observed):")
     for d, v in level.items():
-        print(f"  {d:12s} {v['generated']:>9,} / {v['observed']:>9,}  "
-              f"ratio {v['ratio']:.2f}")
+        print(f"  {d:12s} {v['generated']:>9,} / {v['observed']:>9,}  ratio {v['ratio']:.2f}")
 
     # ---- summary comparison on the 773-concept clinical matrix ----
     X_src, concept_ids, persons, T_src = pdm.clinical_incidence(events, periods)
     syn_records = pdm.tables_to_records(tables)
     X_syn = _matrix_for(syn_records, syn_periods, concept_ids)
-    T_syn = np.maximum((syn_periods["end_date"] - syn_periods["start_date"]).dt.days
-                       .to_numpy(float) / 365.25, 1 / 365.25)
+    T_syn = np.maximum(
+        (syn_periods["end_date"] - syn_periods["start_date"]).dt.days.to_numpy(float) / 365.25,
+        1 / 365.25,
+    )
 
-    src = CDMIncidence(X=X_src.toarray(), T=T_src,
-                       concept_group=np.zeros(len(concept_ids), dtype=int))
-    syn = CDMIncidence(X=X_syn.toarray(), T=T_syn,
-                       concept_group=np.zeros(len(concept_ids), dtype=int))
+    src = CDMIncidence(
+        X=X_src.toarray(), T=T_src, concept_group=np.zeros(len(concept_ids), dtype=int)
+    )
+    syn = CDMIncidence(
+        X=X_syn.toarray(), T=T_syn, concept_group=np.zeros(len(concept_ids), dtype=int)
+    )
     stats = compare(src, syn)
 
     # ---- spectral comparison (degree-normalised incidence) ----
@@ -119,45 +142,67 @@ def main():
     ks = pdm.spectral_ks(s_src, s_syn)
     rank_src = pdm.effective_rank(s_src)
     rank_syn = pdm.effective_rank(s_syn)
-    print(f"\nsummary: prevalence r={stats['prevalence']['r']:.3f} "
-          f"(slope {stats['prevalence']['slope']:.2f}), "
-          f"incidence r={stats['incidence']['r']:.3f}, "
-          f"degree L1={stats['degree_l1']:.3f}, "
-          f"co-occurrence r={stats['cooccurrence_r']:.3f}")
-    print(f"spectrum: KS={ks:.3f}, rank>0.1 source {rank_src} / synthetic "
-          f"{rank_syn}")
+    print(
+        f"\nsummary: prevalence r={stats['prevalence']['r']:.3f} "
+        f"(slope {stats['prevalence']['slope']:.2f}), "
+        f"incidence r={stats['incidence']['r']:.3f}, "
+        f"degree L1={stats['degree_l1']:.3f}, "
+        f"co-occurrence r={stats['cooccurrence_r']:.3f}"
+    )
+    print(f"spectrum: KS={ks:.3f}, rank>0.1 source {rank_src} / synthetic {rank_syn}")
 
     # ---- interval tables the source leaves empty ----
     era = {}
     for name, scol, ecol in (
-            ("condition_era", "condition_era_start_date", "condition_era_end_date"),
-            ("drug_era", "drug_era_start_date", "drug_era_end_date")):
+        ("condition_era", "condition_era_start_date", "condition_era_end_date"),
+        ("drug_era", "drug_era_start_date", "drug_era_end_date"),
+    ):
         df = tables[name]
-        era[name] = dict(
-            rows=int(len(df)),
-            median_days=float((pd.to_datetime(df[ecol]) - pd.to_datetime(df[scol]))
-                              .dt.days.median()) if len(df) else 0.0)
+        era[name] = {
+            "rows": int(len(df)),
+            "median_days": float(
+                (pd.to_datetime(df[ecol]) - pd.to_datetime(df[scol])).dt.days.median()
+            )
+            if len(df)
+            else 0.0,
+        }
 
     # ---- persist ----
-    out = dict(
-        fitted=dict(k=float(fit.k), propensity_tmean=float(fit.propensity_tmean),
-                    death_frac=float(fit.death["frac"]),
-                    n_parameters=int(fit.n_parameters),
-                    K=int(fit.meta["K"]),
-                    n_atoms=int(fit.n_concepts)),
-        level=level, summary=stats,
-        spectrum=dict(ks=ks, rank_source=rank_src, rank_synthetic=rank_syn,
-                      top10_source=s_src[:10].tolist(),
-                      top10_synthetic=s_syn[:10].tolist()),
-        era=era,
-        durations={d: dict(pi0=float(fit.duration[d]["pi0"]),
-                           mu=fit.duration[d]["mu"].tolist(),
-                           s=fit.duration[d]["s"].tolist(),
-                           observed_median=fit.duration[d]["observed_median"])
-                   for d in pdm.INTERVAL_DOMAINS},
+    out = {
+        "fitted": {
+            "k": float(fit.k),
+            "propensity_tmean": float(fit.propensity_tmean),
+            "death_frac": float(fit.death["frac"]),
+            "n_parameters": int(fit.n_parameters),
+            "K": int(fit.meta["K"]),
+            "n_atoms": int(fit.n_concepts),
+        },
+        "level": level,
+        "summary": stats,
+        "spectrum": {
+            "ks": ks,
+            "rank_source": rank_src,
+            "rank_synthetic": rank_syn,
+            "top10_source": s_src[:10].tolist(),
+            "top10_synthetic": s_syn[:10].tolist(),
+        },
+        "era": era,
+        "durations": {
+            d: {
+                "pi0": float(fit.duration[d]["pi0"]),
+                "mu": fit.duration[d]["mu"].tolist(),
+                "s": fit.duration[d]["s"].tolist(),
+                "observed_median": fit.duration[d]["observed_median"],
+            }
+            for d in pdm.INTERVAL_DOMAINS
+        },
+    }
+    json.dump(
+        out,
+        open(f"{RES}/perdomain.json", "w"),
+        indent=1,
+        default=lambda o: float(o) if isinstance(o, np.floating) else str(o),
     )
-    json.dump(out, open(f"{RES}/perdomain.json", "w"), indent=1,
-              default=lambda o: float(o) if isinstance(o, np.floating) else str(o))
 
     # ---- figure: levels, summary, spectrum all side by side ----
     fig, axes = plt.subplots(1, 3, figsize=(11.0, 3.2))
@@ -165,8 +210,9 @@ def main():
     ax = axes[0]
     doms = list(level)
     ratios = [level[d]["ratio"] for d in doms]
-    ax.bar(doms, ratios, color=[C["green"] if 0.9 <= r <= 1.1 else C["red"]
-                                for r in ratios], width=0.6)
+    ax.bar(
+        doms, ratios, color=[C["green"] if 0.9 <= r <= 1.1 else C["red"] for r in ratios], width=0.6
+    )
     ax.axhline(1.0, color="k", ls=":", lw=0.9)
     ax.set_ylim(0, max(1.35, max(ratios) * 1.05))
     ax.set_ylabel("generated / source")
@@ -181,8 +227,11 @@ def main():
     ax.plot(lim, lim, "k:", lw=0.8)
     ax.set_xlabel("source prevalence")
     ax.set_ylabel("synthetic prevalence")
-    ax.set_title(f"Prevalence r={stats['prevalence']['r']:.2f}; "
-                 f"co-occurrence r={stats['cooccurrence_r']:.2f}", fontsize=9)
+    ax.set_title(
+        f"Prevalence r={stats['prevalence']['r']:.2f}; "
+        f"co-occurrence r={stats['cooccurrence_r']:.2f}",
+        fontsize=9,
+    )
 
     ax = axes[2]
     k = np.arange(1, 41)
@@ -197,8 +246,10 @@ def main():
     fig.savefig(f"{FIG}/fig27_perdomain.png", bbox_inches="tight")
     plt.close(fig)
     print(f"\nwrote {FIG}/fig27_perdomain.png and {RES}/perdomain.json")
-    print(f"interval tables: condition_era {era['condition_era']['rows']:,}, "
-          f"drug_era {era['drug_era']['rows']:,} (source: empty)")
+    print(
+        f"interval tables: condition_era {era['condition_era']['rows']:,}, "
+        f"drug_era {era['drug_era']['rows']:,} (source: empty)"
+    )
 
 
 if __name__ == "__main__":

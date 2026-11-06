@@ -25,10 +25,14 @@ from topocdm.fit import PropensityDist
 from topocdm.model import CDMIncidence, Params
 
 
-def sample_cdm(params: Params, template: CDMIncidence, M: int | None = None,
-               patient_dist: PropensityDist | None = None,
-               rng: np.random.Generator | None = None,
-               mode: str = "replay") -> CDMIncidence:
+def sample_cdm(
+    params: Params,
+    template: CDMIncidence,
+    M: int | None = None,
+    patient_dist: PropensityDist | None = None,
+    rng: np.random.Generator | None = None,
+    mode: str = "replay",
+) -> CDMIncidence:
     """Draw a synthetic incidence matrix with a fixed total event count."""
     rng = rng or np.random.default_rng(0)
     n, c = template.n, template.c
@@ -36,14 +40,17 @@ def sample_cdm(params: Params, template: CDMIncidence, M: int | None = None,
 
     if mode == "replay":
         u = params.u.copy()
+        if params.patient_group is None:
+            raise ValueError("replay mode needs a fitted patient_group")
         g = params.patient_group.copy()
     elif mode == "fresh":
         if patient_dist is None:
             raise ValueError("fresh mode needs a PropensityDist")
         u = patient_dist.sample(n, rng)
         if params.B is not None:
-            freq = np.bincount(params.patient_group,
-                               minlength=params.n_groups).astype(float)
+            if params.patient_group is None:
+                raise ValueError("patient_group is required when B is set")
+            freq = np.bincount(params.patient_group, minlength=params.n_groups).astype(float)
             g = rng.choice(params.n_groups, size=n, p=freq / freq.sum())
         else:
             g = np.zeros(n, dtype=int)
@@ -56,8 +63,7 @@ def sample_cdm(params: Params, template: CDMIncidence, M: int | None = None,
     if params.B is None:
         w = T * u
     else:
-        Lam_h = np.bincount(template.concept_group, weights=params.lam,
-                            minlength=params.B.shape[1])
+        Lam_h = np.bincount(template.concept_group, weights=params.lam, minlength=params.B.shape[1])
         w = T * u * (params.B @ Lam_h)[g]
 
     p_i = w / w.sum()
@@ -70,13 +76,17 @@ def sample_cdm(params: Params, template: CDMIncidence, M: int | None = None,
         q = q / q.sum()
         X[i] = rng.multinomial(int(counts[i]), q)
 
-    return CDMIncidence(X=X, T=T.copy(), concept_group=template.concept_group.copy(),
-                        patient_group=g, concept_names=template.concept_names,
-                        meta=dict(source="topocdm", mode=mode, M=M))
+    return CDMIncidence(
+        X=X,
+        T=T.copy(),
+        concept_group=template.concept_group.copy(),
+        patient_group=g,
+        concept_names=template.concept_names,
+        meta={"source": "topocdm", "mode": mode, "M": M},
+    )
 
 
-def sample_replicates(params: Params, template: CDMIncidence, n_rep: int = 20,
-                      **kwargs) -> list:
+def sample_replicates(params: Params, template: CDMIncidence, n_rep: int = 20, **kwargs) -> list:
     """Draw several synthetic CDMs; useful for Monte Carlo null distributions."""
     rng = kwargs.pop("rng", None) or np.random.default_rng(0)
     return [sample_cdm(params, template, rng=rng, **kwargs) for _ in range(n_rep)]

@@ -51,28 +51,28 @@ class Scenario:
     years: float = 5.0
 
     # population
-    frailty_sigma: float = 0.8          # lognormal SD of care-seeking propensity
+    frailty_sigma: float = 0.8  # lognormal SD of care-seeking propensity
     n_sites: int = 40
-    site_sigma: float = 0.5             # lognormal SD of site-level lab propensity
+    site_sigma: float = 0.5  # lognormal SD of site-level lab propensity
 
     # visit process
-    base_visit_rate: float = 1.2        # visits per person-year at u = 1
-    p_lab: float = 0.35                 # labs per visit at site multiplier 1
+    base_visit_rate: float = 1.2  # visits per person-year at u = 1
+    p_lab: float = 0.35  # labs per visit at site multiplier 1
 
     # incidental detection
-    eps_exam: float = 0.02              # P(record | exam)
-    eps_lab: float = 0.08               # P(record | lab)
+    eps_exam: float = 0.02  # P(record | exam)
+    eps_lab: float = 0.08  # P(record | lab)
 
     # exposure
     exposure_frac: float = 0.30
-    t_exposure: float = 2.5             # years from start
-    visit_mult: float = 1.2             # exposure raises visit rate
-    lab_mult: float = 2.0               # exposure raises lab propensity
+    t_exposure: float = 2.5  # years from start
+    visit_mult: float = 1.2  # exposure raises visit rate
+    lab_mult: float = 2.0  # exposure raises lab propensity
 
     # a true causal effect, on a condition that is detected through labs
     rr_true: float = 1.5
-    lam_background: float = 0.10        # episodes per person-year
-    tau_episode: float = 0.25           # years an episode remains detectable
+    lam_background: float = 0.10  # episodes per person-year
+    tau_episode: float = 0.25  # years an episode remains detectable
 
     seed: int = 0
 
@@ -113,7 +113,7 @@ def simulate_population(scn: Scenario | None = None, seed: int | None = None) ->
     n = scn.n
 
     frailty = rng.lognormal(0.0, scn.frailty_sigma, size=n)
-    frailty /= np.exp(0.5 * scn.frailty_sigma ** 2)   # mean 1, so rates are interpretable
+    frailty /= np.exp(0.5 * scn.frailty_sigma**2)  # mean 1, so rates are interpretable
     site_id = rng.integers(0, scn.n_sites, size=n)
     site_mult = rng.lognormal(0.0, scn.site_sigma, size=scn.n_sites)[site_id]
 
@@ -139,11 +139,17 @@ def simulate_population(scn: Scenario | None = None, seed: int | None = None) ->
     unexposed_time = person_time - exposed_time
 
     return Population(
-        frailty=frailty, site_mult=site_mult, exposed=exposed,
-        visits_pre=visits_pre, visits_post=visits_post,
-        labs_pre=labs_pre, labs_post=labs_post,
-        person_time=person_time, exposed_time=exposed_time,
-        unexposed_time=unexposed_time, scn=scn,
+        frailty=frailty,
+        site_mult=site_mult,
+        exposed=exposed,
+        visits_pre=visits_pre,
+        visits_post=visits_post,
+        labs_pre=labs_pre,
+        labs_post=labs_post,
+        person_time=person_time,
+        exposed_time=exposed_time,
+        unexposed_time=unexposed_time,
+        scn=scn,
     )
 
 
@@ -177,7 +183,7 @@ def true_effect(pop: Population, rng) -> dict:
     rr = np.where(pop.exposed, scn.rr_true, 1.0)
 
     # lab rate (opens per year) in each period
-    lab_rate_pre = (scn.base_visit_rate * pop.frailty * scn.p_lab * pop.site_mult)
+    lab_rate_pre = scn.base_visit_rate * pop.frailty * scn.p_lab * pop.site_mult
     lab_rate_post = lab_rate_pre * np.where(pop.exposed, scn.visit_mult * scn.lab_mult, 1.0)
 
     p_det_pre = 1.0 - np.exp(-lab_rate_pre * scn.tau_episode)
@@ -186,18 +192,18 @@ def true_effect(pop: Population, rng) -> dict:
     episodes_pre = rng.poisson(scn.lam_background * pre)
     episodes_post = rng.poisson(scn.lam_background * rr * post)
 
-    observed = rng.binomial(episodes_pre, p_det_pre) + rng.binomial(episodes_post, p_det_post)
+    rng.binomial(episodes_pre, p_det_pre) + rng.binomial(episodes_post, p_det_post)
 
     obs_pre = rng.binomial(episodes_pre, p_det_pre)
     obs_post = rng.binomial(episodes_post, p_det_post)
-    return dict(
-        observed_pre=obs_pre,
-        observed_post=obs_post,
-        true_pre=episodes_pre,
-        true_post=episodes_post,
-        p_det_pre=p_det_pre,
-        p_det_post=p_det_post,
-    )
+    return {
+        "observed_pre": obs_pre,
+        "observed_post": obs_post,
+        "true_pre": episodes_pre,
+        "true_post": episodes_post,
+        "p_det_pre": p_det_pre,
+        "p_det_post": p_det_post,
+    }
 
 
 def to_event_table(pop: Population, concepts: dict, rng) -> np.ndarray:

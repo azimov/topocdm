@@ -37,12 +37,13 @@ TAU = 2.0 * np.pi
 # Wrapped Gaussian machinery (thesis Section 5.1.1)
 # --------------------------------------------------------------------------
 
+
 def wrapped_gauss(theta, mu, sigma, kmax=6):
     """Wrapped normal density, Eq 5.1: sum over the integer lattice."""
     theta = np.asarray(theta, dtype=float)
     out = np.zeros_like(theta)
     for k in range(-kmax, kmax + 1):
-        out += np.exp(-((theta - mu + TAU * k) ** 2) / (2.0 * sigma ** 2))
+        out += np.exp(-((theta - mu + TAU * k) ** 2) / (2.0 * sigma**2))
     return out / (sigma * np.sqrt(TAU))
 
 
@@ -64,6 +65,7 @@ def node_scores(theta, sigma_s):
 # --------------------------------------------------------------------------
 # Weighted sampling without replacement
 # --------------------------------------------------------------------------
+
 
 def _gumbel_topk(weights, k, rng):
     """Sample k distinct indices with probability proportional to weights.
@@ -87,6 +89,7 @@ def _gumbel_topk(weights, k, rng):
 # Core generator (thesis Algorithm 2)
 # --------------------------------------------------------------------------
 
+
 class CigramGraph:
     """Container for a generated graph and its ground-truth structure."""
 
@@ -94,8 +97,9 @@ class CigramGraph:
         self.adj = adj
         self.theta = theta
         self.alpha = alpha
-        self.communities = communities if communities is not None else np.zeros(
-            adj.shape[0], dtype=int)
+        self.communities = (
+            communities if communities is not None else np.zeros(adj.shape[0], dtype=int)
+        )
         self.community_theta = community_theta
 
     @property
@@ -111,8 +115,7 @@ class CigramGraph:
         return int(self.adj.sum() // 2)
 
 
-def _fill_subgraph(nodes, theta, beta, m, a, rng, min_degree=1, adj=None,
-                   global_index=None):
+def _fill_subgraph(nodes, theta, beta, m, a, rng, min_degree=1, adj=None, global_index=None):
     """Fill a block (thesis fillGraph). Returns local adjacency."""
     nodes = np.asarray(nodes, dtype=np.int64)
     nb = nodes.size
@@ -125,10 +128,7 @@ def _fill_subgraph(nodes, theta, beta, m, a, rng, min_degree=1, adj=None,
     b = b / b.sum()
 
     dmat = np.abs(np.abs(th)[:, None] - np.abs(th)[None, :])
-    if a != 0.0:
-        base = np.exp(-a * dmat)
-    else:
-        base = np.ones_like(dmat)
+    base = np.exp(-a * dmat) if a != 0.0 else np.ones_like(dmat)
 
     m = int(min(m, nb * (nb - 1) // 2))
     stubs = rng.choice(nb, size=m, p=b)
@@ -146,8 +146,17 @@ def _fill_subgraph(nodes, theta, beta, m, a, rng, min_degree=1, adj=None,
     return local
 
 
-def cigram(n, avg_deg=None, density=None, sigma_f=1.0, sigma_s=1.0, a=0.0,
-           min_degree=1, rng=None, seed=None):
+def cigram(
+    n,
+    avg_deg=None,
+    density=None,
+    sigma_f=1.0,
+    sigma_s=1.0,
+    a=0.0,
+    min_degree=1,
+    rng=None,
+    seed=None,
+):
     """Single-community CiGRAM (thesis Section 5.1)."""
     if rng is None:
         rng = np.random.default_rng(seed)
@@ -161,8 +170,7 @@ def cigram(n, avg_deg=None, density=None, sigma_f=1.0, sigma_s=1.0, a=0.0,
     alpha = node_scores(theta, sigma_s)
     beta = alpha / alpha.sum()
 
-    adj = _fill_subgraph(np.arange(n), theta, beta, m, a, rng,
-                         min_degree=min_degree)
+    adj = _fill_subgraph(np.arange(n), theta, beta, m, a, rng, min_degree=min_degree)
 
     if min_degree > 0:
         deg = adj.sum(axis=1)
@@ -182,9 +190,23 @@ def cigram(n, avg_deg=None, density=None, sigma_f=1.0, sigma_s=1.0, a=0.0,
 # Modular CiGRAM (thesis Section 5.2, Algorithm 3)
 # --------------------------------------------------------------------------
 
-def cigram_modular(n, K, avg_deg=None, density=None, sigma_f=1.0, sigma_s=1.0,
-                   a=0.0, ek=0.01, p_o=0.0, sigma_cf=None, sigma_cs=None,
-                   min_degree=1, rng=None, seed=None):
+
+def cigram_modular(
+    n,
+    K,
+    avg_deg=None,
+    density=None,
+    sigma_f=1.0,
+    sigma_s=1.0,
+    a=0.0,
+    ek=0.01,
+    p_o=0.0,
+    sigma_cf=None,
+    sigma_cs=None,
+    min_degree=1,
+    rng=None,
+    seed=None,
+):
     """CiGRAM with K heterogeneous, optionally overlapping communities.
 
     ek    : fraction of edges placed between communities (thesis e_k)
@@ -243,8 +265,7 @@ def cigram_modular(n, K, avg_deg=None, density=None, sigma_f=1.0, sigma_s=1.0,
         nodes = np.nonzero(owner == c)[0]
         if nodes.size < 2 or alloc[c] == 0:
             continue
-        sub = _fill_subgraph(nodes, theta, beta, int(alloc[c]), a, rng,
-                             min_degree=0)
+        sub = _fill_subgraph(nodes, theta, beta, int(alloc[c]), a, rng, min_degree=0)
         adj[np.ix_(nodes, nodes)] |= sub
 
     # --- inter-community edges
@@ -260,8 +281,7 @@ def cigram_modular(n, K, avg_deg=None, density=None, sigma_f=1.0, sigma_s=1.0,
             if i_cands.size == 0:
                 continue
             i = rng.choice(i_cands, p=beta[i_cands] / beta[i_cands].sum())
-            w = beta * np.exp(-a * (np.abs(np.abs(theta[i]) - np.abs(theta))
-                                    + cdist[c1][owner]))
+            w = beta * np.exp(-a * (np.abs(np.abs(theta[i]) - np.abs(theta)) + cdist[c1][owner]))
             w[i] = 0.0
             w[adj[i]] = 0.0
             # cannot connect within the same community
@@ -283,8 +303,7 @@ def cigram_modular(n, K, avg_deg=None, density=None, sigma_f=1.0, sigma_s=1.0,
                 adj[i, j[0]] = True
                 adj[j[0], i] = True
 
-    return CigramGraph(adj, theta, alpha, communities=owner,
-                       community_theta=ctheta)
+    return CigramGraph(adj, theta, alpha, communities=owner, community_theta=ctheta)
 
 
 # --------------------------------------------------------------------------
@@ -327,8 +346,7 @@ def _assemble(theta, beta, owner, ctheta, cbeta, n, avg_deg, a, ek, rng):
             nodes = np.nonzero(owner == c)[0]
             if nodes.size < 2 or alloc[c] == 0:
                 continue
-            sub = _fill_subgraph(nodes, theta, beta, int(alloc[c]), a, rng,
-                                 min_degree=0)
+            sub = _fill_subgraph(nodes, theta, beta, int(alloc[c]), a, rng, min_degree=0)
             adj[np.ix_(nodes, nodes)] |= sub
 
         cdist = np.abs(np.abs(ctheta)[:, None] - np.abs(ctheta)[None, :])
@@ -339,8 +357,7 @@ def _assemble(theta, beta, owner, ctheta, cbeta, n, avg_deg, a, ek, rng):
             if cands.size == 0:
                 continue
             i = int(rng.choice(cands, p=beta[cands] / beta[cands].sum()))
-            w = beta * np.exp(-a * (np.abs(np.abs(theta[i]) - np.abs(theta))
-                                    + cdist[c1][owner]))
+            w = beta * np.exp(-a * (np.abs(np.abs(theta[i]) - np.abs(theta)) + cdist[c1][owner]))
             w[i] = 0.0
             w[adj[i]] = 0.0
             w[owner == c1] = 0.0
@@ -349,8 +366,7 @@ def _assemble(theta, beta, owner, ctheta, cbeta, n, avg_deg, a, ek, rng):
                 adj[i, j[0]] = True
                 adj[j[0], i] = True
     else:
-        adj = _fill_subgraph(np.arange(n), theta, beta, m, a, rng,
-                             min_degree=1)
+        adj = _fill_subgraph(np.arange(n), theta, beta, m, a, rng, min_degree=1)
 
     for i in np.nonzero(adj.sum(axis=1) == 0)[0]:
         w = beta.copy()
@@ -363,9 +379,20 @@ def _assemble(theta, beta, owner, ctheta, cbeta, n, avg_deg, a, ek, rng):
     return adj
 
 
-def cigram_multiplex(n, layers, rho=0.7, avg_deg=8, K=1, ek=0.05,
-                     sigma_f=1.0, sigma_s=1.0, sigma_cf=None, sigma_cs=None,
-                     rng=None, seed=None):
+def cigram_multiplex(
+    n,
+    layers,
+    rho=0.7,
+    avg_deg=8,
+    K=1,
+    ek=0.05,
+    sigma_f=1.0,
+    sigma_s=1.0,
+    sigma_cf=None,
+    sigma_cs=None,
+    rng=None,
+    seed=None,
+):
     """Generate an L-layer multiplex graph over a shared population.
 
     `layers` is a list of dicts, each optionally specifying:
@@ -381,7 +408,7 @@ def cigram_multiplex(n, layers, rho=0.7, avg_deg=8, K=1, ek=0.05,
     sigma_cs = sigma_s if sigma_cs is None else sigma_cs
 
     theta_shared = wrap(rng.normal(0.0, sigma_f, size=n))
-    z = rng.normal(0.0, 1.0, size=n)          # patient-level frailty
+    z = rng.normal(0.0, 1.0, size=n)  # patient-level frailty
 
     if K > 1:
         ctheta = node_positions(K, sigma_cf, rng)
@@ -402,8 +429,7 @@ def cigram_multiplex(n, layers, rho=0.7, avg_deg=8, K=1, ek=0.05,
         sf = spec.get("sigma_f", sigma_f)
 
         eta = rng.normal(0.0, 1.0, size=n)
-        theta_l = wrap(rho * theta_shared
-                       + np.sqrt(max(0.0, 1.0 - rho ** 2)) * sf * eta)
+        theta_l = wrap(rho * theta_shared + np.sqrt(max(0.0, 1.0 - rho**2)) * sf * eta)
 
         alpha = node_scores(theta_l, ss)
         logb = np.log(alpha) + gamma * z
@@ -411,11 +437,9 @@ def cigram_multiplex(n, layers, rho=0.7, avg_deg=8, K=1, ek=0.05,
         beta = beta / beta.sum()
 
         adj = _assemble(theta_l, beta, owner, ctheta, cbeta, n, deg, al, ekl, rng)
-        g = CigramGraph(adj, theta_l, alpha, communities=owner,
-                        community_theta=ctheta)
+        g = CigramGraph(adj, theta_l, alpha, communities=owner, community_theta=ctheta)
         g.name = spec.get("name", "layer")
         graphs.append(g)
 
-    ctx = dict(theta_shared=theta_shared, utilisation=z, owner=owner,
-               ctheta=ctheta)
+    ctx = {"theta_shared": theta_shared, "utilisation": z, "owner": owner, "ctheta": ctheta}
     return graphs, ctx

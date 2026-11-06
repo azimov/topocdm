@@ -9,16 +9,22 @@ the `MATERIALIZED` error reached production use. The tests now run the same
 
 | tier | command | needs |
 |---|---|---|
+| unit | `pytest -q -m "not integration"` | nothing |
 | unit + DuckDB | `pytest -q` | nothing; DuckDB is in-process |
 | Postgres integration | `pytest -q -m integration` | `CDM_DSN`, `CDM_SCHEMA`, `CDM_RESULTS_SCHEMA` |
 | Databricks live | `pytest -q -m databricks` | connection card, circepy, connector |
 | CI | push / PR | Postgres 16 service, fixture CDM |
 
+Every run enforces a coverage floor (`fail_under` in `pyproject.toml`, currently
+65 %). Use `--no-cov` when running a single file so the floor does not apply.
+
 ## What each test does
 
-- `tests/integration/test_duckdb_fit.py` builds a five-patient DuckDB CDM in
-  memory, including a patient with **two observation periods**, and runs
-  `run_fit`: sample table, extraction, fit, drop. No server.
+- `tests/integration/test_duckdb_fit.py` loads
+  `tests/fixtures/duckdb_test.sql` into an in-memory DuckDB CDM, including a
+  patient with **two observation periods**, and runs `run_fit`: sample table,
+  extraction, fit, drop. No server. The fixture is checked in as SQL so the
+  data it tests against is reviewable.
 - `tests/integration/test_cdm_fit.py` runs the same `run_fit` against a live
   OMOP Postgres database. `demo_cdm` has 2,694 patients and 5,343 periods, so
   it exercises the multiple-period case from issue #1.
@@ -29,6 +35,15 @@ the `MATERIALIZED` error reached production use. The tests now run the same
 - `tests/test_databricks_config.py` checks the `cdms`/`cmds` loader, the
   scratch-table SQL, the absence of `WITH ... AS MATERIALIZED`, and the
   Postgres/DuckDB/Databricks sample syntax.
+- `tests/test_sql.py` covers the portable SQL layer: per-dialect date
+  arithmetic, the step plan and its dependencies, and checkpoint skip/execute/
+  lineage behaviour.
+- `tests/test_fast.py` compares the optional C kernel against the dense NumPy
+  likelihood (single- and multi-group) and checks the no-library fallback.
+- `tests/test_release.py` covers the release artefact: no per-patient terms, a
+  normalised group prior, and the fixed-density invariant.
+- `tests/test_omop.py` covers OMOP table generation: person/period keys, the
+  domain-to-table mapping, and vocabulary validation.
 - `tests/test_perdomain.py::test_multiple_observation_periods_per_person` is the
   unit regression for the period aggregation.
 
@@ -80,7 +95,7 @@ Without `CDM_DSN`:
 
 ```bash
 MPLCONFIGDIR=./.mplconfig .venv/bin/python -m pytest -q
-# 35 passed, 3 skipped (two Postgres, one Databricks)
+# 53 passed, 3 skipped (two Postgres, one Databricks)
 ```
 
 The real warehouse:
@@ -94,10 +109,17 @@ fits `K=2`, and asserts the summary is non-empty.
 
 ## CI
 
-`.github/workflows/tests.yml` starts a Postgres 16 service, loads
-`tests/fixtures/omop_test.sql`, and runs `pytest -q` on Python 3.10, 3.11 and
-3.12. The fixture has five patients and patient 1 has two observation periods.
-`ruff check .` runs before the tests (syntax and undefined names only).
+Five workflows, mirroring the gates you can run locally:
+
+| workflow | what it runs |
+|---|---|
+| `tests.yml` | `tox` on Python 3.10–3.14, Postgres 16 service + `omop_test.sql`, Codecov upload |
+| `ruff.yml` | `ruff check .` and `ruff format --check .` (latest ruff) |
+| `typecheck.yml` | `mypy topocdm` |
+| `cross-platform.yml` | unit tests on Windows + macOS, and a wheel build + clean-venv smoke test |
+| (local) | `tox`, `tox -e py311` reproduce the test matrix |
+
+The CI fixture has five patients and patient 1 has two observation periods.
 
 ## What is still not tested
 
@@ -108,10 +130,15 @@ card. If it fails, the traceback is the warehouse path, not a shim.
 ## Standards taken from circepy
 
 - pytest markers and `conftest.py` fixtures instead of ad hoc scripts
-- a CI matrix on the supported Python versions
+- a CI matrix on the supported Python versions (3.10–3.14)
 - a real database service in CI, with a checked-in fixture
 - a separate `test` extra for database test dependencies
-- an error-only lint gate (`ruff` with `E9`, `F63`, `F7`, `F82`)
+- the full ruff rule set (`E, F, I, UP, B, C4, SIM`) plus `ruff format`
+- `tox` + `tox-gh-actions` so local and CI runs are identical
+- `mypy` with a shipped `py.typed`
+- coverage reporting with a floor and Codecov project/patch targets
+- a wheel build and clean-venv smoke test
 - the live integration test is opt-in and skipped without the external service
 
-Not yet adopted: `tox`, `mypy`, and coverage reporting.
+Run the gates locally with `CONTRIBUTING.md`'s four commands, or `tox` for the
+full interpreter matrix.

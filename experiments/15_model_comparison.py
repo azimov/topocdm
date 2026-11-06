@@ -1,18 +1,38 @@
 """15 -- fixed-effects vs visit-anchored: spectral fidelity against parameter count."""
+
 from __future__ import annotations
-import os, sys, json
-import numpy as np
+
+import json
+import os
+import sys
+
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-import matplotlib; matplotlib.use("Agg")
+import matplotlib
+
+matplotlib.use("Agg")
 import matplotlib.pyplot as plt
-plt.rcParams.update({"figure.dpi": 160, "font.size": 9,
-                     "axes.spines.top": False, "axes.spines.right": False,
-                     "axes.grid": True, "grid.alpha": 0.25})
+
+plt.rcParams.update(
+    {
+        "figure.dpi": 160,
+        "font.size": 9,
+        "axes.spines.top": False,
+        "axes.spines.right": False,
+        "axes.grid": True,
+        "grid.alpha": 0.25,
+    }
+)
 FIG, RES = "figs", "results"
 
 # visit model: measured in experiments/14
-visit = [(7_850, 0.480, 7), (15_900, 0.476, 15), (32_600, 0.486, 25),
-         (68_400, 0.467, 42), (107_400, 0.464, 51), (195_000, 0.464, 58)]
+visit = [
+    (7_850, 0.480, 7),
+    (15_900, 0.476, 15),
+    (32_600, 0.486, 25),
+    (68_400, 0.467, 42),
+    (107_400, 0.464, 51),
+    (195_000, 0.464, 58),
+]
 # + one heavy-tailed patient multiplier, Gamma(k=0.15): 1 extra parameter, no N
 visit_het = [(32_601, 0.376, 27), (195_001, 0.364, 53)]
 # fixed effects: block model and block+rank-15 factors (experiments/12 and earlier).
@@ -22,12 +42,30 @@ real_rank = 81
 
 fig, axes = plt.subplots(1, 2, figsize=(9.4, 3.4))
 ax = axes[0]
-ax.plot([v[0] for v in visit], [v[1] for v in visit], "o-", ms=5,
-        color="#C1440E", label="visit-anchored (no N dependence)")
-ax.plot([f[0] for f in fixed], [f[1] for f in fixed], "s--", ms=6,
-        color="#2C6E9B", label="fixed effects (includes N=10,000)")
-ax.plot([v[0] for v in visit_het], [v[1] for v in visit_het], "^:", ms=7,
-        color="#4E8B4A", label="visit-anchored + heavy-tailed patient effect")
+ax.plot(
+    [v[0] for v in visit],
+    [v[1] for v in visit],
+    "o-",
+    ms=5,
+    color="#C1440E",
+    label="visit-anchored (no N dependence)",
+)
+ax.plot(
+    [f[0] for f in fixed],
+    [f[1] for f in fixed],
+    "s--",
+    ms=6,
+    color="#2C6E9B",
+    label="fixed effects (includes N=10,000)",
+)
+ax.plot(
+    [v[0] for v in visit_het],
+    [v[1] for v in visit_het],
+    "^:",
+    ms=7,
+    color="#4E8B4A",
+    label="visit-anchored + heavy-tailed patient effect",
+)
 ax.set_xscale("log")
 ax.set_xlabel("model parameters")
 ax.set_ylabel("spectral distance (KS)")
@@ -47,5 +85,8 @@ ax.set_title("B. Rank recovered", fontsize=9)
 fig.tight_layout()
 fig.savefig(f"{FIG}/fig25_model_comparison.png", bbox_inches="tight")
 print("wrote", f"{FIG}/fig25_model_comparison.png")
-json.dump(dict(visit=visit, visit_het=visit_het, fixed=fixed, real_rank=real_rank),
-          open(f"{RES}/model_comparison.json", "w"), indent=1)
+json.dump(
+    {"visit": visit, "visit_het": visit_het, "fixed": fixed, "real_rank": real_rank},
+    open(f"{RES}/model_comparison.json", "w"),
+    indent=1,
+)

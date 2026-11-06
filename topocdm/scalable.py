@@ -24,8 +24,8 @@ the estimate honest while never putting the whole database in one process.
 
 from __future__ import annotations
 
+from collections.abc import Callable, Iterator
 from dataclasses import dataclass
-from typing import Callable, Iterator
 
 import numpy as np
 from scipy import sparse
@@ -33,12 +33,13 @@ from scipy.special import gammaln, logsumexp
 
 from topocdm.model import Params
 
-try:                                    # optional compiled kernel
+try:  # optional compiled kernel
     from topocdm import fast as _FAST
+
     if not _FAST.AVAILABLE:
-        _FAST = None
-except Exception:                       # pragma: no cover
-    _FAST = None
+        _FAST = None  # type: ignore[assignment]
+except Exception:  # pragma: no cover
+    _FAST = None  # type: ignore[assignment]
 
 EPS = 1e-12
 
@@ -70,9 +71,11 @@ class SparseCDM:
         """Events per person-year."""
         return self.total / float(self.T.sum())
 
-    def take(self, idx) -> "SparseCDM":
+    def take(self, idx) -> SparseCDM:
         return SparseCDM(
-            X=self.X[idx], T=self.T[idx], concept_group=self.concept_group,
+            X=self.X[idx],
+            T=self.T[idx],
+            concept_group=self.concept_group,
             concept_ids=self.concept_ids,
             person_ids=None if self.person_ids is None else self.person_ids[idx],
         )
@@ -83,15 +86,17 @@ def to_sparse(data) -> SparseCDM:
     if isinstance(data, SparseCDM):
         return data
     X = data.X if sparse.issparse(data.X) else sparse.csr_matrix(data.X)
-    return SparseCDM(X=sparse.csr_matrix(X), T=np.asarray(data.T, dtype=float),
-                     concept_group=np.asarray(data.concept_group),
-                     concept_ids=getattr(data, "concept_ids", None))
+    return SparseCDM(
+        X=sparse.csr_matrix(X),
+        T=np.asarray(data.T, dtype=float),
+        concept_group=np.asarray(data.concept_group),
+        concept_ids=getattr(data, "concept_ids", None),
+    )
 
 
 def _concept_group_matrix(concept_group: np.ndarray, H: int) -> sparse.csr_matrix:
     c = len(concept_group)
-    return sparse.csr_matrix((np.ones(c), (np.arange(c), concept_group)),
-                             shape=(c, H))
+    return sparse.csr_matrix((np.ones(c), (np.arange(c), concept_group)), shape=(c, H))
 
 
 def _profiles(X, col_H):
@@ -143,8 +148,7 @@ class StreamingFit:
     density: float
 
 
-def _init_from_sample_fit(make_chunks, c, cg_idx, G, sample_cap, seed,
-                          dense_limit=5e7):
+def _init_from_sample_fit(make_chunks, c, cg_idx, G, sample_cap, seed, dense_limit=5e7):
     """Fit properly on a bounded sample, then use that as the streaming start.
 
     This is the robust way to initialise: the sample is small enough to run the
@@ -169,11 +173,10 @@ def _init_from_sample_fit(make_chunks, c, cg_idx, G, sample_cap, seed,
     X = sparse.vstack(Xs)
     T = np.concatenate(Ts)
     if X.shape[0] * c > dense_limit:
-        return None                      # sample too wide to densify; fall back
+        return None  # sample too wide to densify; fall back
     data = CDMIncidence(X=X.toarray(), T=T, concept_group=cg_idx.copy())
     try:
-        res = fit(data, n_patient_groups=G, n_restarts=1, seed=seed,
-                  max_iter=60, tol=1e-6)
+        res = fit(data, n_patient_groups=G, n_restarts=1, seed=seed, max_iter=60, tol=1e-6)
     except Exception:
         return None
     return res.params
@@ -227,8 +230,9 @@ def _dense_chunk_loglik(X, T, u, lam, B, pi, cg_idx, G) -> float:
     return float(logsumexp(per, axis=0).sum())
 
 
-def _chunk_loglik(X, T, u, lam, B, pi, n_ih, rowsum, cg_idx, H, G,
-                  rows: int = 512, rng=None) -> float:
+def _chunk_loglik(
+    X, T, u, lam, B, pi, n_ih, rowsum, cg_idx, H, G, rows: int = 512, rng=None
+) -> float:
     """Mixture log-likelihood for one chunk, estimated on a row subsample.
 
     The likelihood is a sum over patients, so evaluating it on `rows` randomly
@@ -252,12 +256,22 @@ def _chunk_loglik(X, T, u, lam, B, pi, n_ih, rowsum, cg_idx, H, G,
     return float(sub * n / rows)
 
 
-def fit_streaming(make_chunks: Callable[[int], Iterator], n, c, concept_group,
-                  n_groups: int = 1, n_epochs: int = 25, local_iters: int = 3,
-                  tol: float = 1e-7, init: Params | None = None,
-                  init_sample: int = 5000, seed: int = 0,
-                  ll_rows: int = 512, keep_u: bool = True,
-                  verbose: bool = False) -> StreamingFit:
+def fit_streaming(
+    make_chunks: Callable[[int], Iterator],
+    n,
+    c,
+    concept_group,
+    n_groups: int = 1,
+    n_epochs: int = 25,
+    local_iters: int = 3,
+    tol: float = 1e-7,
+    init: Params | None = None,
+    init_sample: int = 5000,
+    seed: int = 0,
+    ll_rows: int = 512,
+    keep_u: bool = True,
+    verbose: bool = False,
+) -> StreamingFit:
     """Fit by epoch-wise EM over a stream of patient chunks.
 
     `make_chunks(epoch)` returns an iterable of (X_chunk, T_chunk) with X_chunk
@@ -279,14 +293,12 @@ def fit_streaming(make_chunks: Callable[[int], Iterator], n, c, concept_group,
         pi = np.full(G, 1.0 / G)
         B = None
         if G > 1:
-            warm = _init_from_sample_fit(make_chunks, c, cg_idx, G,
-                                         init_sample, seed)
+            warm = _init_from_sample_fit(make_chunks, c, cg_idx, G, init_sample, seed)
             if warm is not None:
                 lam = warm.lam.copy()
                 B = warm.B.copy()
             else:
-                B = _init_B(make_chunks, col_H, G, H, lam, cg_idx, n,
-                            init_sample, seed)
+                B = _init_B(make_chunks, col_H, G, H, lam, cg_idx, n, init_sample, seed)
 
     # u_i is per-patient nuisance. It is needed only to populate the returned
     # Params object; the fit itself uses it per chunk and discards it. At
@@ -344,8 +356,9 @@ def fit_streaming(make_chunks: Callable[[int], Iterator], n, c, concept_group,
             A_g += R.T @ (T * u)
             pi_num += R.sum(axis=0)
             seen += X.shape[0]
-            ll += _chunk_loglik(X, T, u, lam, B, pi, n_ih, rowsum, cg_idx,
-                                H, G, rows=ll_rows, rng=ll_rng)
+            ll += _chunk_loglik(
+                X, T, u, lam, B, pi, n_ih, rowsum, cg_idx, H, G, rows=ll_rows, rng=ll_rng
+            )
 
         pi = np.maximum(pi_num / max(pi_num.sum(), EPS), 1e-9)
         pi /= pi.sum()
@@ -372,20 +385,30 @@ def fit_streaming(make_chunks: Callable[[int], Iterator], n, c, concept_group,
             break
         prev = ll
 
-    params = Params(u=(u_all if keep_u else np.ones(n)),
-                    lam=lam, B=B,
-                    patient_group=(lab_all if keep_u else np.zeros(n, dtype=int)),
-                    concept_group=cg_idx.copy(), n_groups=G)
-    return StreamingFit(params=params,
-                        loglik=float(history[-1]) if history else -np.inf,
-                        history=history, n_patients_seen=n_seen,
-                        n_events_seen=n_events, epochs=len(history),
-                        density=n_events / max(n_seen, 1))
+    params = Params(
+        u=(u_all if keep_u else np.ones(n)),
+        lam=lam,
+        B=B,
+        patient_group=(lab_all if keep_u else np.zeros(n, dtype=int)),
+        concept_group=cg_idx.copy(),
+        n_groups=G,
+    )
+    return StreamingFit(
+        params=params,
+        loglik=float(history[-1]) if history else -np.inf,
+        history=history,
+        n_patients_seen=n_seen,
+        n_events_seen=n_events,
+        epochs=len(history),
+        density=n_events / max(n_seen, 1),
+    )
 
 
-def array_chunks(data: SparseCDM, chunk_size: int, sample_frac: float = 1.0,
-                 seed: int = 0, redraw: bool = True):
+def array_chunks(
+    data: SparseCDM, chunk_size: int, sample_frac: float = 1.0, seed: int = 0, redraw: bool = True
+):
     """`make_chunks` over a SparseCDM, with optional per-epoch subsampling."""
+
     def make(epoch: int):
         rng = np.random.default_rng(seed + (epoch if redraw else 0))
         n = data.n
@@ -397,8 +420,9 @@ def array_chunks(data: SparseCDM, chunk_size: int, sample_frac: float = 1.0,
         if redraw:
             idx = rng.permutation(idx)
         for s in range(0, len(idx), chunk_size):
-            sel = idx[s:s + chunk_size]
+            sel = idx[s : s + chunk_size]
             yield sel, data.X[sel], data.T[sel]
+
     return make
 
 
@@ -406,6 +430,8 @@ def fit_propensity_streaming(make_chunks, params: Params) -> float:
     """Negative-binomial shape k, accumulated over chunks (one pass)."""
     from scipy import optimize
 
+    if params.concept_group is None:
+        raise ValueError("concept_group is required")
     H = int(params.concept_group.max()) + 1
     lam_h = np.bincount(params.concept_group, weights=params.lam, minlength=H)
     col_H = _concept_group_matrix(params.concept_group, H)
@@ -431,20 +457,32 @@ def fit_propensity_streaming(make_chunks, params: Params) -> float:
 
     def nll(theta):
         k = np.exp(theta[0])
-        return -float(np.sum(gammaln(x + k) - gammaln(k) - gammaln(x + 1)
-                             + k * (np.log(k) - np.log(k + mu))
-                             + x * (np.log(np.maximum(mu, 1e-12)) - np.log(k + mu))))
+        return -float(
+            np.sum(
+                gammaln(x + k)
+                - gammaln(k)
+                - gammaln(x + 1)
+                + k * (np.log(k) - np.log(k + mu))
+                + x * (np.log(np.maximum(mu, 1e-12)) - np.log(k + mu))
+            )
+        )
 
-    r = optimize.minimize_scalar(lambda t: nll(np.array([t])),
-                                 bounds=(-6.0, 6.0), method="bounded")
+    r = optimize.minimize_scalar(lambda t: nll(np.array([t])), bounds=(-6.0, 6.0), method="bounded")
     return float(np.exp(r.x))
 
 
-def simulate_sparse(n: int = 100_000, c: int = 500, n_concept_groups: int = 10,
-                    n_patient_groups: int = 5, years: float = 5.0,
-                    sigma_u: float = 1.2, events_per_person_year: float = 8.0,
-                    block_amplification: float = 4.0, block_noise: float = 0.1,
-                    seed: int = 0) -> tuple:
+def simulate_sparse(
+    n: int = 100_000,
+    c: int = 500,
+    n_concept_groups: int = 10,
+    n_patient_groups: int = 5,
+    years: float = 5.0,
+    sigma_u: float = 1.2,
+    events_per_person_year: float = 8.0,
+    block_amplification: float = 4.0,
+    block_noise: float = 0.1,
+    seed: int = 0,
+) -> tuple:
     """Generate a large CDM directly in sparse form.
 
     Sampling total events per patient and then allocating them over concepts
@@ -488,11 +526,12 @@ def simulate_sparse(n: int = 100_000, c: int = 500, n_concept_groups: int = 10,
             vals.append(draw[nz].astype(np.float64))
 
     X = sparse.csr_matrix(
-        (np.concatenate(vals), (np.concatenate(rows), np.concatenate(cols))),
-        shape=(n, c))
-    data = SparseCDM(X=X, T=T, concept_group=cg,
-                     person_ids=np.arange(1, n + 1),
-                     concept_ids=np.arange(1, c + 1))
-    truth = Params(u=u, lam=lam, B=B, patient_group=pg,
-                   concept_group=cg.copy(), n_groups=n_patient_groups)
+        (np.concatenate(vals), (np.concatenate(rows), np.concatenate(cols))), shape=(n, c)
+    )
+    data = SparseCDM(
+        X=X, T=T, concept_group=cg, person_ids=np.arange(1, n + 1), concept_ids=np.arange(1, c + 1)
+    )
+    truth = Params(
+        u=u, lam=lam, B=B, patient_group=pg, concept_group=cg.copy(), n_groups=n_patient_groups
+    )
     return data, truth

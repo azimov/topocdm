@@ -34,7 +34,9 @@ piece is date arithmetic, which is why it is isolated in one function.
 from __future__ import annotations
 
 import hashlib
+from collections.abc import Callable
 from dataclasses import dataclass, field
+from typing import Any
 
 # --------------------------------------------------------------------------
 # Dialects: only date arithmetic actually differs
@@ -88,6 +90,7 @@ def days_between(dialect: str, start: str, end: str) -> str:
 # Step definitions
 # --------------------------------------------------------------------------
 
+
 @dataclass
 class Step:
     name: str
@@ -114,8 +117,7 @@ group by person_id, {concept_col}
 
 
 def person_time_step(cdm: str, out_schema: str, dialect: str) -> Step:
-    days = days_between(dialect, "observation_period_start_date",
-                        "observation_period_end_date")
+    days = days_between(dialect, "observation_period_start_date", "observation_period_end_date")
     sql = f"""
 select person_id,
        {days} as days_observed
@@ -146,8 +148,8 @@ def incidence_step(cdm: str, out_schema: str, domains=None) -> Step:
     """Union the per-domain checkpoints into one incidence table."""
     domains = domains or list(DOMAIN_TABLES)
     union = "\nunion all\n".join(
-        f"select person_id, concept_id, n from {out_schema}.ev_{d}"
-        for d in domains)
+        f"select person_id, concept_id, n from {out_schema}.ev_{d}" for d in domains
+    )
     sql = f"""
 select person_id, concept_id, sum(n) as n
 from (
@@ -158,8 +160,13 @@ group by person_id, concept_id
     return Step(name="incidence", sql=sql, depends_on=tuple(domains))
 
 
-def plan(cdm: str = "cdm", vocab: str = "vocab", out_schema: str = "topocdm",
-         dialect: str = "postgres", domains=None) -> list:
+def plan(
+    cdm: str = "cdm",
+    vocab: str = "vocab",
+    out_schema: str = "topocdm",
+    dialect: str = "postgres",
+    domains=None,
+) -> list:
     """The full step plan, in dependency order."""
     domains = domains or list(DOMAIN_TABLES)
     steps = [domain_step(d, cdm, out_schema, dialect) for d in domains]
@@ -173,6 +180,7 @@ def plan(cdm: str = "cdm", vocab: str = "vocab", out_schema: str = "topocdm",
 # Checkpoint execution
 # --------------------------------------------------------------------------
 
+
 @dataclass
 class CheckpointExecutor:
     """Materialise steps once, skip unchanged ones, record what ran.
@@ -182,8 +190,8 @@ class CheckpointExecutor:
     pass a Spark session wrapper, locally a psql shell-out, in tests a stub.
     """
 
-    run_sql: callable
-    query_sql: callable = None
+    run_sql: Callable[[str], Any]
+    query_sql: Callable[[str], Any] | None = None
     out_schema: str = "topocdm"
     dialect: str = "postgres"
     executed: list = field(default_factory=list)
@@ -209,19 +217,24 @@ class CheckpointExecutor:
         a failure late in the plan does not repeat the expensive aggregation,
         and a second analysis can reuse the same tables.
         """
-        self.run_sql(SCHEMA_DDL.get(self.dialect, "create schema if not exists {schema}")
-                     .format(schema=self.out_schema))
+        self.run_sql(
+            SCHEMA_DDL.get(self.dialect, "create schema if not exists {schema}").format(
+                schema=self.out_schema
+            )
+        )
         for step in steps:
             if checkpoint and not force and self._exists(step.name):
                 self.skipped.append(step)
                 continue
             ddl = CREATE_REPLACE[self.dialect].format(
-                name=f"{self.out_schema}.{step.name}", sql=step.sql)
+                name=f"{self.out_schema}.{step.name}", sql=step.sql
+            )
             self.run_sql(ddl)
             self.executed.append(step)
         return self
 
     def lineage(self) -> list:
-        return [dict(name=s.name, content_hash=s.content_hash,
-                     depends_on=list(s.depends_on))
-                for s in self.executed]
+        return [
+            {"name": s.name, "content_hash": s.content_hash, "depends_on": list(s.depends_on)}
+            for s in self.executed
+        ]

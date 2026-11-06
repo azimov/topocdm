@@ -1,13 +1,11 @@
 #!/usr/bin/env bash
-# Build the C likelihood kernel. Falls back silently if no compiler is found;
-# the Python implementation is used in that case.
+# Build the optional C likelihood kernel in place.
+#
+# This wraps `python setup.py build_ext --inplace`, so the same command works on
+# macOS, Linux and Windows (Git Bash/WSL). The extension is optional: if no
+# compiler is available the build is skipped and the pure-Python kernel is used.
 set -euo pipefail
-CC=${CC:-clang}
-SRC="$(dirname "$0")/../topocdm/_fast.c"
-OUT="$(dirname "$0")/../topocdm/_fast.so"
-if command -v "$CC" >/dev/null 2>&1; then
-  "$CC" -O3 -march=native -shared -fPIC -o "$OUT" "$SRC"
-  echo "built $OUT with $CC"
-else
-  echo "no C compiler found; using the Python kernel" >&2
-fi
+cd "$(dirname "${BASH_SOURCE[0]}")/.."
+PYTHON="${PYTHON:-python3}"
+"$PYTHON" setup.py build_ext --inplace
+echo "C kernel built in topocdm/ (optional; the Python kernel works without it)"

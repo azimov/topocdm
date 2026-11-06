@@ -13,7 +13,7 @@ bash scripts/setup_work_laptop.sh
 
 It checks Python and git, creates `.venv`, installs the project with the dev
 and Databricks extras, installs circepy from PR 60, builds the optional C
-kernel, runs the 28 tests, and prints the Spark SQL for a 10k patient sample
+kernel, runs the test suite, and prints the Spark SQL for a 10k patient sample
 without connecting.
 
 Useful environment switches:
@@ -66,11 +66,16 @@ branch is also a fallback in the setup script.
 ### Optional: the C kernel
 
 ```bash
+python setup.py build_ext --inplace
+# or, equivalently:
 bash scripts/build_fast.sh
 ```
 
-It needs `clang` or `gcc`. If it fails, nothing breaks; the pure-Python kernel
-is used. `topocdm/_fast.so` is gitignored.
+It needs a C compiler (MSVC on Windows, clang or gcc elsewhere). If it fails,
+nothing breaks; the pure-Python kernel is used. The build is portable: it does
+not use `-march=native`, and `topocdm.fast` finds the result by platform suffix
+(`_fast.cpython-311-darwin.so`, `_fast.so`, `_fast.pyd`, ...). All `_fast*`
+binaries are gitignored.
 
 ## Databricks connection card
 
@@ -101,7 +106,7 @@ override the card. Do not commit the card or the token.
 ## Verify the install
 
 ```bash
-MPLCONFIGDIR=./.mplconfig .venv/bin/python -m pytest -q   # unit tests; integration skips
+MPLCONFIGDIR=./.mplconfig .venv/bin/python -m pytest -q   # unit + DuckDB; live tiers skip
 .venv/bin/python scripts/fit_databricks.py \
   --cmd mycdm_version --n-patients 10000 --dry-run | head
 ```

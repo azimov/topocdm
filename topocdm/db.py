@@ -23,7 +23,6 @@ import pandas as pd
 
 from . import perdomain as pdm
 
-
 EXTRACT_EVENTS = """
 select person_id, 'condition' as domain, condition_concept_id as concept_id,
        cast(condition_start_date as date) as start_date,
@@ -75,8 +74,7 @@ def build_extract_sql(cdm: str, join: str = ""):
     The templates are standard enough for Postgres and DuckDB. The Databricks
     backend translates them with SQLRender before execution.
     """
-    return (EXTRACT_EVENTS.format(cdm=cdm, join=join),
-            EXTRACT_PERIODS.format(cdm=cdm, join=join))
+    return (EXTRACT_EVENTS.format(cdm=cdm, join=join), EXTRACT_PERIODS.format(cdm=cdm, join=join))
 
 
 def sample_table_name(results_schema: str, n_patients: int, seed: int) -> str:
@@ -98,8 +96,7 @@ def sample_select_sql(dialect: str, cdm: str, n_patients: int, seed: int) -> str
     return f"select person_id from {cdm}.person order by {order} limit {n}"
 
 
-def create_sample_sql(dialect: str, table: str, cdm: str,
-                      n_patients: int, seed: int) -> str:
+def create_sample_sql(dialect: str, table: str, cdm: str, n_patients: int, seed: int) -> str:
     select = sample_select_sql(dialect, cdm, n_patients, seed)
     if dialect == "spark":
         return f"create or replace table {table} as {select}"
@@ -162,7 +159,7 @@ class PostgresBackend(Backend):
     def fetch(self, sql: str) -> pd.DataFrame:
         with self.conn.cursor() as cur:
             cur.execute(sql)
-            cols = [d[0] for d in cur.description]
+            cols = [d[0] for d in (cur.description or [])]
             rows = cur.fetchall()
         return pd.DataFrame(rows, columns=cols)
 
@@ -193,8 +190,13 @@ class DuckDBBackend(Backend):
 class DatabricksBackend(Backend):
     dialect = "spark"
 
-    def __init__(self, conn_cfg: dict | None = None, host: str | None = None,
-                 http_path: str | None = None, token: str | None = None):
+    def __init__(
+        self,
+        conn_cfg: dict | None = None,
+        host: str | None = None,
+        http_path: str | None = None,
+        token: str | None = None,
+    ):
         try:
             from databricks import sql as dbsql
         except ImportError as exc:  # pragma: no cover - environment guard
@@ -210,9 +212,9 @@ class DatabricksBackend(Backend):
             raise SystemExit(
                 "Databricks connection is incomplete: set server_hostname, "
                 "http_path and personal_access_token in the connection card, "
-                "or pass --host/--http-path/--token")
-        self.conn = dbsql.connect(server_hostname=host, http_path=http_path,
-                                  access_token=token)
+                "or pass --host/--http-path/--token"
+            )
+        self.conn = dbsql.connect(server_hostname=host, http_path=http_path, access_token=token)
 
     def prepare(self, sql: str) -> str:
         return to_spark(sql)
@@ -228,7 +230,7 @@ class DatabricksBackend(Backend):
                 return cur.fetchall_arrow().to_pandas()
             except Exception:
                 rows = cur.fetchall()
-                cols = [d[0] for d in cur.description]
+                cols = [d[0] for d in (cur.description or [])]
                 return pd.DataFrame(rows, columns=cols)
 
     def create_sample(self, table: str, cdm: str, n_patients: int, seed: int):
@@ -238,9 +240,14 @@ class DatabricksBackend(Backend):
         self.conn.close()
 
 
-def extract_sample(backend: Backend, cdm: str, results: str,
-                   n_patients: int | None, seed: int = 0,
-                   keep_scratch: bool = False):
+def extract_sample(
+    backend: Backend,
+    cdm: str,
+    results: str,
+    n_patients: int | None,
+    seed: int = 0,
+    keep_scratch: bool = False,
+):
     """Create the sample table, fetch events and periods, drop the table.
 
     Returns (events, periods, table_name). `table_name` is None for a full
@@ -272,51 +279,75 @@ def extract_sample(backend: Backend, cdm: str, results: str,
     if n_patients is not None and n_unique > int(n_patients):
         raise RuntimeError(
             f"sample returned {n_unique} patients for n_patients={n_patients}; "
-            "the sample table or extraction is not constrained to the sample")
+            "the sample table or extraction is not constrained to the sample"
+        )
     return events, periods, table
 
 
-def summarize(fit, events: pd.DataFrame, periods: pd.DataFrame, *,
-              cmd: str = "", cdm: str = "", results: str = "",
-              table: str | None = None, n_patients: int | None = None,
-              seed: int = 0) -> dict:
-    return dict(
-        cmd=cmd,
-        cdm_schema=cdm,
-        results_schema=results,
-        sample_table=table,
-        n_patients_requested=n_patients,
-        seed=seed,
-        patients=int(periods["person_id"].nunique()),
-        period_rows=int(len(periods)),
-        records=int(len(events)),
-        per_domain={d: int(v) for d, v in events.groupby("domain").size().items()},
-        k=float(fit.k),
-        propensity_tmean=float(fit.propensity_tmean),
-        death_frac=float(fit.death["frac"]),
-        n_parameters=int(fit.n_parameters),
-        K=int(fit.meta["K"]),
-        n_atoms=int(fit.n_concepts),
-    )
+def summarize(
+    fit,
+    events: pd.DataFrame,
+    periods: pd.DataFrame,
+    *,
+    cmd: str = "",
+    cdm: str = "",
+    results: str = "",
+    table: str | None = None,
+    n_patients: int | None = None,
+    seed: int = 0,
+) -> dict:
+    return {
+        "cmd": cmd,
+        "cdm_schema": cdm,
+        "results_schema": results,
+        "sample_table": table,
+        "n_patients_requested": n_patients,
+        "seed": seed,
+        "patients": int(periods["person_id"].nunique()),
+        "period_rows": int(len(periods)),
+        "records": int(len(events)),
+        "per_domain": {d: int(v) for d, v in events.groupby("domain").size().items()},
+        "k": float(fit.k),
+        "propensity_tmean": float(fit.propensity_tmean),
+        "death_frac": float(fit.death["frac"]),
+        "n_parameters": int(fit.n_parameters),
+        "K": int(fit.meta["K"]),
+        "n_atoms": int(fit.n_concepts),
+    }
 
 
-def run_fit(backend: Backend, cdm: str, results: str,
-            n_patients: int | None, seed: int = 0, k: int = 20,
-            max_patients: int | None = None, keep_scratch: bool = False,
-            cmd: str = "", out: str | None = None,
-            summary_path: str | None = None):
+def run_fit(
+    backend: Backend,
+    cdm: str,
+    results: str,
+    n_patients: int | None,
+    seed: int = 0,
+    k: int = 20,
+    max_patients: int | None = None,
+    keep_scratch: bool = False,
+    cmd: str = "",
+    out: str | None = None,
+    summary_path: str | None = None,
+):
     """The one pipeline: sample -> extract -> fit -> save.
 
     This is the function the Databricks CLI calls, and the function the
     Postgres and DuckDB integration tests call. There is no second copy of the
     extraction or fit logic.
     """
-    events, periods, table = extract_sample(
-        backend, cdm, results, n_patients, seed, keep_scratch)
+    events, periods, table = extract_sample(backend, cdm, results, n_patients, seed, keep_scratch)
     fit = pdm.fit_perdomain(events, periods, K=k, max_patients=max_patients)
-    summary = summarize(fit, events, periods, cmd=cmd, cdm=cdm,
-                        results=results, table=table,
-                        n_patients=n_patients, seed=seed)
+    summary = summarize(
+        fit,
+        events,
+        periods,
+        cmd=cmd,
+        cdm=cdm,
+        results=results,
+        table=table,
+        n_patients=n_patients,
+        seed=seed,
+    )
     if out:
         os.makedirs(os.path.dirname(out) or ".", exist_ok=True)
         with open(out, "wb") as fh:

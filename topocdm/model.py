@@ -36,7 +36,6 @@ Parameters, and what each one means epidemiologically:
 from __future__ import annotations
 
 from dataclasses import dataclass, field
-from typing import Optional
 
 import numpy as np
 from scipy.special import gammaln
@@ -46,16 +45,17 @@ from scipy.special import gammaln
 class Params:
     """Fitted parameters of the topology model."""
 
-    u: np.ndarray                      # (N,) patient propensity, mean 1
-    lam: np.ndarray                    # (C,) concept intensity
-    B: Optional[np.ndarray] = None     # (G, H) block affinity, or None
-    patient_group: Optional[np.ndarray] = None   # (N,)
-    concept_group: Optional[np.ndarray] = None   # (C,)
+    u: np.ndarray  # (N,) patient propensity, mean 1
+    lam: np.ndarray  # (C,) concept intensity
+    B: np.ndarray | None = None  # (G, H) block affinity, or None
+    patient_group: np.ndarray | None = None  # (N,)
+    concept_group: np.ndarray | None = None  # (C,)
     n_groups: int = 1
 
-    def copy(self) -> "Params":
+    def copy(self) -> Params:
         return Params(
-            u=self.u.copy(), lam=self.lam.copy(),
+            u=self.u.copy(),
+            lam=self.lam.copy(),
             B=None if self.B is None else self.B.copy(),
             patient_group=None if self.patient_group is None else self.patient_group.copy(),
             concept_group=None if self.concept_group is None else self.concept_group.copy(),
@@ -76,8 +76,8 @@ class CDMIncidence:
     X: np.ndarray
     T: np.ndarray
     concept_group: np.ndarray
-    patient_group: Optional[np.ndarray] = None
-    concept_names: Optional[list] = None
+    patient_group: np.ndarray | None = None
+    concept_names: list | None = None
     meta: dict = field(default_factory=dict)
 
     @property
@@ -92,12 +92,14 @@ class CDMIncidence:
     def total(self) -> int:
         return int(self.X.sum())
 
-    def subset_patients(self, idx) -> "CDMIncidence":
+    def subset_patients(self, idx) -> CDMIncidence:
         return CDMIncidence(
-            X=self.X[idx], T=self.T[idx],
+            X=self.X[idx],
+            T=self.T[idx],
             concept_group=self.concept_group,
             patient_group=None if self.patient_group is None else self.patient_group[idx],
-            concept_names=self.concept_names, meta=dict(self.meta),
+            concept_names=self.concept_names,
+            meta=dict(self.meta),
         )
 
 
@@ -105,14 +107,15 @@ class CDMIncidence:
 # Mean structure
 # --------------------------------------------------------------------------
 
+
 def mean_matrix(p: Params, data: CDMIncidence) -> np.ndarray:
     """Expected counts, mu_ij = T_i u_i lambda_j B[g_i, h_j]."""
     base = data.T[:, None] * p.u[:, None] * p.lam[None, :]
     if p.B is None:
         return base
-    g = p.patient_group
-    h = p.concept_group
-    return base * p.B[np.ix_(g, h)]
+    if p.patient_group is None or p.concept_group is None:
+        raise ValueError("group labels are required when B is set")
+    return base * p.B[np.ix_(p.patient_group, p.concept_group)]
 
 
 def concept_multipliers(p: Params) -> np.ndarray:
@@ -125,6 +128,7 @@ def concept_multipliers(p: Params) -> np.ndarray:
 # --------------------------------------------------------------------------
 # Likelihoods
 # --------------------------------------------------------------------------
+
 
 def loglik_poisson(p: Params, data: CDMIncidence) -> float:
     """Unconditional Poisson log-likelihood."""
@@ -184,6 +188,7 @@ def bic(p: Params, data: CDMIncidence) -> float:
 # Sampled quantities used by the generator and the null model
 # --------------------------------------------------------------------------
 
+
 def expected_prevalence(p: Params, data: CDMIncidence) -> np.ndarray:
     """P(a patient has at least one record of concept j), under the model."""
     mu = mean_matrix(p, data)
@@ -217,6 +222,8 @@ def loglik_mixture(p: Params, data: CDMIncidence, pis: np.ndarray | None = None)
         G = p.B.shape[0]
         B = p.B
         if pis is None:
+            if p.patient_group is None:
+                raise ValueError("patient_group is required when B is set")
             cnt = np.bincount(p.patient_group, minlength=G).astype(float)
             pis = np.maximum(cnt, 0.5) / max(cnt.sum(), 1e-9)
 
@@ -227,6 +234,7 @@ def loglik_mixture(p: Params, data: CDMIncidence, pis: np.ndarray | None = None)
         mu = np.maximum(base * B[g, data.concept_group][None, :], 1e-300)
         per_group[g] = np.sum(data.X * np.log(mu) - mu - const, axis=1)
     from scipy.special import logsumexp
+
     return float(logsumexp(per_group + np.log(pis)[:, None], axis=0).sum())
 
 
@@ -251,5 +259,4 @@ def aic_mixture(p: Params, data: CDMIncidence) -> float:
 
 
 def bic_mixture(p: Params, data: CDMIncidence) -> float:
-    return (-2.0 * loglik_mixture(p, data)
-            + np.log(max(data.total, 2)) * n_params_mixture(p, data))
+    return -2.0 * loglik_mixture(p, data) + np.log(max(data.total, 2)) * n_params_mixture(p, data)

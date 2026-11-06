@@ -47,12 +47,12 @@ def fit_refill(drug_records: pd.DataFrame, gap_days: int = 30) -> dict:
                 fills.append(i - era_start)
                 era_start = i
         fills.append(len(g) - era_start)
-    return dict(fills=np.asarray(fills, dtype=np.int64),
-                gaps=np.asarray(gaps, dtype=float))
+    return {"fills": np.asarray(fills, dtype=np.int64), "gaps": np.asarray(gaps, dtype=float)}
 
 
-def apply_refill(drug_table: pd.DataFrame, refill: dict,
-                 periods: pd.DataFrame, rng, gap_days: int = 30) -> pd.DataFrame:
+def apply_refill(
+    drug_table: pd.DataFrame, refill: dict, periods: pd.DataFrame, rng, gap_days: int = 30
+) -> pd.DataFrame:
     """Re-date generated drug records into courses.
 
     drug_table: person_id, drug_concept_id, drug_exposure_start_date,
@@ -73,17 +73,20 @@ def apply_refill(drug_table: pd.DataFrame, refill: dict,
     df = drug_table.copy()
     df["drug_exposure_start_date"] = pd.to_datetime(df["drug_exposure_start_date"])
     df["drug_exposure_end_date"] = pd.to_datetime(df["drug_exposure_end_date"])
-    rows = []
+    rows: list[tuple] = []
     for (pid, cid), g in df.groupby(["person_id", "drug_concept_id"], sort=False):
         g = g.sort_values("drug_exposure_start_date").reset_index(drop=True)
         n = len(g)
         if n < 2:
-            rows.extend((pid, cid, r.drug_exposure_start_date,
-                         r.drug_exposure_end_date) for r in g.itertuples())
+            rows.extend(
+                (pid, cid, r.drug_exposure_start_date, r.drug_exposure_end_date)
+                for r in g.itertuples()
+            )
             continue
         starts = g["drug_exposure_start_date"].to_numpy(dtype="datetime64[D]")
-        dur = (g["drug_exposure_end_date"]
-               - g["drug_exposure_start_date"]).dt.days.to_numpy(dtype=np.int64)
+        dur = (g["drug_exposure_end_date"] - g["drug_exposure_start_date"]).dt.days.to_numpy(
+            dtype=np.int64
+        )
         ob_end = np.datetime64(pd.to_datetime(end_map.get(pid)), "D")
 
         # partition n records into courses with the observed fill distribution
@@ -96,7 +99,7 @@ def apply_refill(drug_table: pd.DataFrame, refill: dict,
 
         idx = 0
         for s in sizes:
-            base = starts[idx]                       # keep one original anchor
+            base = starts[idx]  # keep one original anchor
             offset = 0.0
             for j in range(s):
                 if j > 0:
@@ -106,6 +109,16 @@ def apply_refill(drug_table: pd.DataFrame, refill: dict,
                 end = min(start + np.timedelta64(int(dur[idx]), "D"), ob_end)
                 rows.append((pid, cid, pd.to_datetime(start), pd.to_datetime(end)))
                 idx += 1
-    return pd.DataFrame(rows, columns=[
-        "person_id", "drug_concept_id", "drug_exposure_start_date",
-        "drug_exposure_end_date"]) if rows else drug_table
+    return (
+        pd.DataFrame(
+            rows,
+            columns=[
+                "person_id",
+                "drug_concept_id",
+                "drug_exposure_start_date",
+                "drug_exposure_end_date",
+            ],
+        )
+        if rows
+        else drug_table
+    )

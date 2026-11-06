@@ -82,22 +82,26 @@ by 0.0e+00).
 from topocdm.distributed import partition_stats, merge, m_step, Stats
 
 # 1. read the checkpoint in parallel, one partition per person_id range
-df = (spark.read.format("jdbc")
-      .option("url", jdbc_url).option("dbtable", "topocdm.incidence")
-      .option("partitionColumn", "person_id")
-      .option("numPartitions", 512)
-      .option("lowerBound", lo).option("upperBound", hi)
-      .load())
-df.cache()          # the fit makes several passes
+df = (
+    spark.read.format("jdbc")
+    .option("url", jdbc_url)
+    .option("dbtable", "topocdm.incidence")
+    .option("partitionColumn", "person_id")
+    .option("numPartitions", 512)
+    .option("lowerBound", lo)
+    .option("upperBound", hi)
+    .load()
+)
+df.cache()  # the fit makes several passes
+
 
 # 2. one epoch
 def part(rows):
-    X, T = build_csr(rows)                      # chunk -> scipy CSR
-    return iter([partition_stats(X, T, lam_b.value, B_b.value, pi_b.value,
-                                 cg_b.value, G)])
+    X, T = build_csr(rows)  # chunk -> scipy CSR
+    return iter([partition_stats(X, T, lam_b.value, B_b.value, pi_b.value, cg_b.value, G)])
 
-stats = (df.rdd.mapPartitions(part)
-           .treeAggregate(Stats.zeros(C, G, H), merge, merge))
+
+stats = df.rdd.mapPartitions(part).treeAggregate(Stats.zeros(C, G, H), merge, merge)
 lam, B, pi = m_step(stats, lam, B, pi, cg, G)
 ```
 

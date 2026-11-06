@@ -37,9 +37,14 @@ import pandas as pd
 from scipy import stats
 
 
-def cohort_incidence(visits: pd.DataFrame, events: pd.DataFrame,
-                     periods: pd.DataFrame, years, concept_id: int,
-                     min_prior_days: int = 365) -> pd.DataFrame:
+def cohort_incidence(
+    visits: pd.DataFrame,
+    events: pd.DataFrame,
+    periods: pd.DataFrame,
+    years,
+    concept_id: int,
+    min_prior_days: int = 365,
+) -> pd.DataFrame:
     """Incidence of one concept, by calendar year, in the CohortIncidence style."""
     v = visits.copy()
     v["year"] = pd.to_datetime(v["visit_date"]).dt.year
@@ -71,8 +76,7 @@ def cohort_incidence(visits: pd.DataFrame, events: pd.DataFrame,
         obs_start = per_start.loc[persons].to_numpy().astype("datetime64[ns]")
         prior_days = (start - obs_start) / np.timedelta64(1, "D")
         eligible = prior_days >= min_prior_days
-        ev_all = np.array([ev_lookup.get(p, never) for p in persons],
-                          dtype="datetime64[ns]")
+        ev_all = np.array([ev_lookup.get(p, never) for p in persons], dtype="datetime64[ns]")
         eligible &= ev_all >= start
         persons, start = persons[eligible], start[eligible]
 
@@ -80,8 +84,7 @@ def cohort_incidence(visits: pd.DataFrame, events: pd.DataFrame,
         obs_end = per_end.loc[persons].to_numpy().astype("datetime64[ns]")
         limit = np.minimum(np.full(len(persons), y_end), obs_end)
 
-        ev_date = np.array([ev_lookup.get(p, never) for p in persons],
-                           dtype="datetime64[ns]")
+        ev_date = np.array([ev_lookup.get(p, never) for p in persons], dtype="datetime64[ns]")
         if len(persons) == 0:
             continue
         # an outcome is a first occurrence *during follow-up*, not merely an
@@ -94,27 +97,35 @@ def cohort_incidence(visits: pd.DataFrame, events: pd.DataFrame,
         n_out = int(outcome.sum())
         total_pt = float(pt.sum())
         lo, hi = poisson_ci(n_out)
-        out.append(dict(year=int(y), persons=int(len(persons)), outcomes=n_out,
-                        person_time=total_pt,
-                        rate=1000 * n_out / max(total_pt, 1e-9),
-                        rate_lo=1000 * lo / max(total_pt, 1e-9),
-                        rate_hi=1000 * hi / max(total_pt, 1e-9)))
+        out.append(
+            {
+                "year": int(y),
+                "persons": int(len(persons)),
+                "outcomes": n_out,
+                "person_time": total_pt,
+                "rate": 1000 * n_out / max(total_pt, 1e-9),
+                "rate_lo": 1000 * lo / max(total_pt, 1e-9),
+                "rate_hi": 1000 * hi / max(total_pt, 1e-9),
+            }
+        )
     return pd.DataFrame(out)
 
 
 def poisson_ci(k: int, alpha: float = 0.05):
     """Exact (Garwood) interval for a Poisson count."""
-    if k == 0:
-        lo = 0.0
-    else:
-        lo = 0.5 * stats.chi2.ppf(alpha / 2, 2 * k)
+    lo = 0.0 if k == 0 else 0.5 * stats.chi2.ppf(alpha / 2, 2 * k)
     hi = 0.5 * stats.chi2.ppf(1 - alpha / 2, 2 * (k + 1))
     return float(lo), float(hi)
 
 
-def predictive_ci(mean_events: float, person_time: float,
-                  dispersion: float | None = None, alpha: float = 0.05,
-                  scale: float = 1000.0, n_effective: float = 1.0):
+def predictive_ci(
+    mean_events: float,
+    person_time: float,
+    dispersion: float | None = None,
+    alpha: float = 0.05,
+    scale: float = 1000.0,
+    n_effective: float = 1.0,
+):
     """Interval for the rate of a *new* database, from the fitted model.
 
     If outcomes are Poisson the count has variance equal to its mean. With the
@@ -133,7 +144,7 @@ def predictive_ci(mean_events: float, person_time: float,
     """
     m = max(float(mean_events), 1e-9)
     n_eff = max(float(n_effective), 1e-9)
-    var = m if dispersion is None else m + m ** 2 / (max(dispersion, 1e-9) * n_eff)
+    var = m if dispersion is None else m + m**2 / (max(dispersion, 1e-9) * n_eff)
     sd = np.sqrt(var)
     rate = scale * m / person_time
     sd_rate = scale * sd / person_time

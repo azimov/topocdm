@@ -10,7 +10,8 @@ from topocdm import db
 
 ROOT = pathlib.Path(__file__).resolve().parents[1]
 SPEC = importlib.util.spec_from_file_location(
-    "fit_databricks", ROOT / "scripts" / "fit_databricks.py")
+    "fit_databricks", ROOT / "scripts" / "fit_databricks.py"
+)
 fit_databricks = importlib.util.module_from_spec(SPEC)
 SPEC.loader.exec_module(fit_databricks)
 
@@ -34,8 +35,7 @@ def _card(tmp_path, key):
 
 
 def test_cdms_key(tmp_path):
-    conn, cdm, scratch, vocab, name = fit_databricks.load_config(
-        str(_card(tmp_path, "cdms")))
+    conn, cdm, scratch, vocab, name = fit_databricks.load_config(str(_card(tmp_path, "cdms")))
     assert name == "test"
     assert cdm == "main.omop"
     assert scratch == "scratch.me"
@@ -44,8 +44,7 @@ def test_cdms_key(tmp_path):
 
 
 def test_legacy_cmds_key_still_loads(tmp_path):
-    _, cdm, _, _, name = fit_databricks.load_config(
-        str(_card(tmp_path, "cmds")))
+    _, cdm, _, _, name = fit_databricks.load_config(str(_card(tmp_path, "cmds")))
     assert name == "test"
     assert cdm == "main.omop"
 
@@ -59,8 +58,7 @@ def test_sampled_sql_uses_a_scratch_table_not_a_cte():
     assert "order by hash(person_id, 0)" in sample
     assert "limit 1000" in sample
 
-    events, periods = db.build_extract_sql(
-        "main.omop", f" join {table} using (person_id)")
+    events, periods = db.build_extract_sql("main.omop", f" join {table} using (person_id)")
     join = "join scratch.me.topocdm_sample_0_1000 using (person_id)"
     assert join in events
     assert join in periods
@@ -85,6 +83,6 @@ def test_each_dialect_gets_a_deterministic_sample():
     assert "hash(person_id, 7)" in spark and "limit 100" in spark
 
     assert db.create_sample_sql("spark", "s.t", "main.omop", 10, 0).startswith(
-        "create or replace table")
-    assert db.create_sample_sql("postgres", "s.t", "main.omop", 10, 0).startswith(
-        "create table")
+        "create or replace table"
+    )
+    assert db.create_sample_sql("postgres", "s.t", "main.omop", 10, 0).startswith("create table")

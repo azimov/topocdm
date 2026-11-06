@@ -41,8 +41,7 @@ from dataclasses import dataclass
 
 import numpy as np
 
-from topocdm.model import (CDMIncidence, Params, loglik_conditional,
-                           loglik_mixture)
+from topocdm.model import CDMIncidence, Params, loglik_mixture
 
 EPS = 1e-12
 
@@ -66,8 +65,9 @@ def _normalise(p: Params, data: CDMIncidence) -> Params:
         p.u = p.u / m
         p.lam = p.lam * m
     if p.B is not None:
-        w = np.bincount(p.patient_group, weights=data.T * p.u,
-                        minlength=p.n_groups).astype(float)
+        if p.patient_group is None:
+            raise ValueError("patient_group is required when B is set")
+        w = np.bincount(p.patient_group, weights=data.T * p.u, minlength=p.n_groups).astype(float)
         tot = w.sum()
         if tot > 0:
             for h in range(p.B.shape[1]):
@@ -78,10 +78,15 @@ def _normalise(p: Params, data: CDMIncidence) -> Params:
     return p
 
 
-def fit_ipf(data: CDMIncidence, n_patient_groups: int = 1,
-            tol: float = 1e-10, max_iter: int = 500,
-            init: Params | None = None, verbose: bool = False,
-            soft: bool = True) -> FitResult:
+def fit_ipf(
+    data: CDMIncidence,
+    n_patient_groups: int = 1,
+    tol: float = 1e-10,
+    max_iter: int = 500,
+    init: Params | None = None,
+    verbose: bool = False,
+    soft: bool = True,
+) -> FitResult:
     """Fit by EM (soft responsibilities) or classification EM (hard).
 
     Soft EM maximises the mixture likelihood, which is the likelihood the model
@@ -108,8 +113,9 @@ def fit_ipf(data: CDMIncidence, n_patient_groups: int = 1,
         lam = np.maximum(colsum / total, EPS)
         pg = np.zeros(n, dtype=int)
         B = np.ones((G, H)) if G > 1 else None
-        p = Params(u=u, lam=lam, B=B, patient_group=pg,
-                   concept_group=data.concept_group.copy(), n_groups=G)
+        p = Params(
+            u=u, lam=lam, B=B, patient_group=pg, concept_group=data.concept_group.copy(), n_groups=G
+        )
         p = _normalise(p, data)
     else:
         p = init.copy()
@@ -135,23 +141,23 @@ def fit_ipf(data: CDMIncidence, n_patient_groups: int = 1,
             p.u = np.maximum(rowsum / np.maximum(data.T * p.lam.sum(), EPS), EPS)
             p.lam = np.maximum(colsum / max(float(np.sum(data.T * p.u)), EPS), EPS)
         else:
-            Lam_h = col_H.T @ p.lam                        # (H,)
+            Lam_h = col_H.T @ p.lam  # (H,)
             pi = R.mean(axis=0)
 
             # u first, then A_g from the UPDATED u, so that lambda and B use
             # consistent quantities. Using a stale A_g breaks the EM
             # monotonicity guarantee.
-            blam = p.B @ Lam_h                             # (G,)
+            blam = p.B @ Lam_h  # (G,)
             p.u = np.maximum(rowsum / np.maximum(data.T * (R @ blam), EPS), EPS)
             p = _normalise(p, data)
             Lam_h = col_H.T @ p.lam
-            A_g = R.T @ (data.T * p.u)                     # (G,)
+            A_g = R.T @ (data.T * p.u)  # (G,)
 
             denom_l = (A_g @ p.B)[data.concept_group]
             p.lam = np.maximum(colsum / np.maximum(denom_l, EPS), EPS)
 
             Lam_h = col_H.T @ p.lam
-            num = R.T @ n_ih                               # (G, H)
+            num = R.T @ n_ih  # (G, H)
             den = np.outer(A_g, Lam_h)
             p.B = np.maximum((num + 0.5) / np.maximum(den + 0.5, EPS), EPS)
 
@@ -184,9 +190,15 @@ def fit_ipf(data: CDMIncidence, n_patient_groups: int = 1,
         prev = ll
 
     best_p.patient_group = np.argmax(best_R, axis=1)
-    return FitResult(params=best_p, loglik=best_ll, n_iter=it,
-                     converged=converged, history=history, resp=best_R,
-                     pi=best_R.mean(axis=0) if G > 1 else np.ones(1))
+    return FitResult(
+        params=best_p,
+        loglik=best_ll,
+        n_iter=it,
+        converged=converged,
+        history=history,
+        resp=best_R,
+        pi=best_R.mean(axis=0) if G > 1 else np.ones(1),
+    )
 
 
 def _init_groups(data: CDMIncidence, G: int, rng) -> np.ndarray:
@@ -203,12 +215,13 @@ def _init_groups(data: CDMIncidence, G: int, rng) -> np.ndarray:
     prof = data.X.astype(float) @ col_H
     tot = prof.sum(axis=1, keepdims=True)
     prof = np.divide(prof, np.maximum(tot, EPS))
-    prof = np.hstack([prof, (tot > 0).astype(float)])   # distinguish all-zero rows
+    prof = np.hstack([prof, (tot > 0).astype(float)])  # distinguish all-zero rows
 
     if G == 1:
         return np.zeros(data.n, dtype=int)
     try:
         from scipy.cluster.vq import kmeans2
+
         _, lab = kmeans2(prof, G, minit="++", seed=int(rng.integers(1, 1 << 30)))
         lab = lab.astype(int)
     except Exception:
@@ -220,8 +233,9 @@ def _init_groups(data: CDMIncidence, G: int, rng) -> np.ndarray:
     return lab
 
 
-def fit(data: CDMIncidence, n_patient_groups: int = 1, n_restarts: int = 1,
-        seed: int = 0, **kwargs) -> FitResult:
+def fit(
+    data: CDMIncidence, n_patient_groups: int = 1, n_restarts: int = 1, seed: int = 0, **kwargs
+) -> FitResult:
     """Fit, with k-means initialisation and random restarts for the block model."""
     G = max(1, int(n_patient_groups))
     if G == 1:
@@ -235,15 +249,20 @@ def fit(data: CDMIncidence, n_patient_groups: int = 1, n_restarts: int = 1,
         u0 = np.maximum(data.X.sum(axis=1) / max(data.T.sum(), EPS), EPS)
         u0 = u0 / u0.mean()
         lam0 = np.maximum(data.X.sum(axis=0) / max(data.total, EPS), EPS)
-        lab = _init_groups(data, G, rng) if r == 0 else \
-            rng.integers(0, G, size=n)
-        init = Params(u=u0, lam=lam0, B=np.ones((G, H)),
-                      patient_group=lab,
-                      concept_group=data.concept_group.copy(), n_groups=G)
+        lab = _init_groups(data, G, rng) if r == 0 else rng.integers(0, G, size=n)
+        init = Params(
+            u=u0,
+            lam=lam0,
+            B=np.ones((G, H)),
+            patient_group=lab,
+            concept_group=data.concept_group.copy(),
+            n_groups=G,
+        )
         res = fit_ipf(data, G, init=init, **kwargs)
         res.n_restarts = r + 1
         if best is None or res.loglik > best.loglik:
             best = res
+    assert best is not None, "n_restarts must be at least 1"
     return best
 
 
@@ -251,6 +270,7 @@ def fit(data: CDMIncidence, n_patient_groups: int = 1, n_restarts: int = 1,
 # Propensity distribution, for generating new patients rather than replaying
 # the fitted ones.
 # --------------------------------------------------------------------------
+
 
 @dataclass
 class PropensityDist:
@@ -284,26 +304,27 @@ def fit_propensity_nb(data: CDMIncidence, p: Params) -> PropensityDist:
     from scipy import optimize
     from scipy.special import gammaln
 
-    lam_h = np.bincount(data.concept_group, weights=p.lam,
-                        minlength=int(data.concept_group.max()) + 1)
-    if p.B is None:
-        Lam = np.full(data.n, lam_h.sum())
-    else:
-        Lam = (p.B @ lam_h)[p.patient_group]
+    lam_h = np.bincount(
+        data.concept_group, weights=p.lam, minlength=int(data.concept_group.max()) + 1
+    )
+    Lam = np.full(data.n, lam_h.sum()) if p.B is None else (p.B @ lam_h)[p.patient_group]
     mu = data.T * Lam
     x = data.X.sum(axis=1).astype(float)
 
     def nll(theta):
         k = np.exp(theta[0])
-        ll = (gammaln(x + k) - gammaln(k) - gammaln(x + 1)
-              + k * (np.log(k) - np.log(k + mu))
-              + x * (np.log(np.maximum(mu, 1e-12)) - np.log(k + mu)))
+        ll = (
+            gammaln(x + k)
+            - gammaln(k)
+            - gammaln(x + 1)
+            + k * (np.log(k) - np.log(k + mu))
+            + x * (np.log(np.maximum(mu, 1e-12)) - np.log(k + mu))
+        )
         return -float(np.sum(ll))
 
-    r = optimize.minimize_scalar(lambda t: nll(np.array([t])),
-                                 bounds=(-6.0, 6.0), method="bounded")
+    r = optimize.minimize_scalar(lambda t: nll(np.array([t])), bounds=(-6.0, 6.0), method="bounded")
     k = float(np.exp(r.x))
-    return PropensityDist("gamma", dict(shape=k, scale=1.0 / k))
+    return PropensityDist("gamma", {"shape": k, "scale": 1.0 / k})
 
 
 def fit_propensity(u: np.ndarray, floor: float = 1e-3) -> PropensityDist:
@@ -315,5 +336,4 @@ def fit_propensity(u: np.ndarray, floor: float = 1e-3) -> PropensityDist:
     """
     x = np.clip(u, floor, None)
     logx = np.log(x)
-    return PropensityDist("lognormal", dict(mu=float(logx.mean()),
-                                            sigma=float(logx.std(ddof=1))))
+    return PropensityDist("lognormal", {"mu": float(logx.mean()), "sigma": float(logx.std(ddof=1))})

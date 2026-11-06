@@ -33,22 +33,36 @@ from scipy import optimize, stats
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 import matplotlib
+
 matplotlib.use("Agg")
 import matplotlib.pyplot as plt
 
-from explore.cdm_sim import Scenario, simulate_population, incidental, true_effect
+from explore.cdm_sim import Scenario, incidental, simulate_population, true_effect
 
 FIG, RES = "figs", "results"
 os.makedirs(FIG, exist_ok=True)
 os.makedirs(RES, exist_ok=True)
 
-plt.rcParams.update({
-    "figure.dpi": 160, "font.size": 9, "axes.spines.top": False,
-    "axes.spines.right": False, "axes.grid": True, "grid.alpha": 0.25,
-    "grid.linewidth": 0.5, "lines.linewidth": 1.4,
-})
-C = dict(blue="#2C6E9B", orange="#D9822B", green="#4E8B4A",
-         red="#B4443C", purple="#6B5B95", grey="#8A8A8A")
+plt.rcParams.update(
+    {
+        "figure.dpi": 160,
+        "font.size": 9,
+        "axes.spines.top": False,
+        "axes.spines.right": False,
+        "axes.grid": True,
+        "grid.alpha": 0.25,
+        "grid.linewidth": 0.5,
+        "lines.linewidth": 1.4,
+    }
+)
+C = {
+    "blue": "#2C6E9B",
+    "orange": "#D9822B",
+    "green": "#4E8B4A",
+    "red": "#B4443C",
+    "purple": "#6B5B95",
+    "grey": "#8A8A8A",
+}
 
 
 def rate(counts, group, post):
@@ -57,6 +71,7 @@ def rate(counts, group, post):
 
 
 # --------------------------------------------------------------- experiment 1
+
 
 def exp_toenail(n=40000):
     """Incidence of a purely 'found' condition tracks contact, not disease."""
@@ -90,8 +105,10 @@ def exp_toenail(n=40000):
     num, den = 0.0, 0.0
     for s in np.unique(bins):
         m = bins == s
-        a1 = (a & b_ & m).sum(); b1 = (a & ~b_ & m).sum()
-        c1 = (~a & b_ & m).sum(); d1 = (~a & ~b_ & m).sum()
+        a1 = (a & b_ & m).sum()
+        b1 = (a & ~b_ & m).sum()
+        c1 = (~a & b_ & m).sum()
+        d1 = (~a & ~b_ & m).sum()
         n1 = m.sum()
         if n1 == 0:
             continue
@@ -99,13 +116,19 @@ def exp_toenail(n=40000):
         den += b1 * c1 / n1
     mh = num / den if den > 0 else np.nan
 
-    return dict(visit_mean=xs, inc_exam=y_exam, inc_lab=y_lab,
-                or_raw=float(raw_or), or_stratified=float(mh),
-                exams_per_py=float(pop.visits_pre.mean() / py),
-                labs_per_py=float(pop.labs_pre.mean() / py))
+    return {
+        "visit_mean": xs,
+        "inc_exam": y_exam,
+        "inc_lab": y_lab,
+        "or_raw": float(raw_or),
+        "or_stratified": float(mh),
+        "exams_per_py": float(pop.visits_pre.mean() / py),
+        "labs_per_py": float(pop.labs_pre.mean() / py),
+    }
 
 
 # --------------------------------------------------------------- experiment 2
+
 
 def _irr(counts, exposed, post):
     return rate(counts, exposed, post) / rate(counts, ~exposed, post)
@@ -129,8 +152,9 @@ def _poisson_fit(y, X, offset, iters=200):
 def _profile(b0b1tau_fn, starts):
     best = None
     for s0 in starts:
-        r = optimize.minimize(b0b1tau_fn, x0=s0, method="Nelder-Mead",
-                              options=dict(maxiter=40000, fatol=1e-8))
+        r = optimize.minimize(
+            b0b1tau_fn, x0=s0, method="Nelder-Mead", options={"maxiter": 40000, "fatol": 1e-8}
+        )
         if best is None or r.fun < best.fun:
             best = r
     return best
@@ -183,8 +207,7 @@ def _fit_channel_model(w, labs, visits, exposed, post):
 
 def exp_negative_controls(reps=12):
     """Shared bias vs channel-specific bias, and what each estimator does."""
-    out = {k: [] for k in ["naive", "nco_exam", "nco_lab", "plugin",
-                           "channel_model", "oracle"]}
+    out = {k: [] for k in ["naive", "nco_exam", "nco_lab", "plugin", "channel_model", "oracle"]}
     true_rr, true_irr = [], []
 
     for rep in range(reps):
@@ -209,7 +232,8 @@ def exp_negative_controls(reps=12):
 
         out["plugin"].append(_fit_plugin(w_post, pop.labs_post, e, post))
         out["channel_model"].append(
-            _fit_channel_model(w_post, pop.labs_post, pop.visits_post, e, post))
+            _fit_channel_model(w_post, pop.labs_post, pop.visits_post, e, post)
+        )
 
         # oracle: backs out the true p_detect
         oracle = _irr(w_post / w["p_det_post"], e, post)
@@ -218,14 +242,16 @@ def exp_negative_controls(reps=12):
         true_rr.append(_irr(w["true_post"], e, post))
         true_irr.append(scn.rr_true)
 
-    return {k: dict(mean=float(np.mean(v)), sd=float(np.std(v)), values=v)
-            for k, v in out.items()} | {
+    return {
+        k: {"mean": float(np.mean(v)), "sd": float(np.std(v)), "values": v} for k, v in out.items()
+    } | {
         "truth": float(np.mean(true_irr)),
         "truth_from_episodes": float(np.mean(true_rr)),
     }
 
 
 # --------------------------------------------------------------- experiment 3
+
 
 def exp_marginal_equivalence(n=8000, n_exam=6, n_lab=6, reps=6):
     """Two generators, identical marginals, different joint structure."""
@@ -263,10 +289,18 @@ def exp_marginal_equivalence(n=8000, n_exam=6, n_lab=6, reps=6):
         for i in range(len(names)):
             for j in range(i + 1, len(names)):
                 total += 1
-                tab = np.array([[((M[:, i] > 0) & (M[:, j] > 0)).sum(),
-                                 ((M[:, i] > 0) & (M[:, j] == 0)).sum()],
-                                [((M[:, i] == 0) & (M[:, j] > 0)).sum(),
-                                 ((M[:, i] == 0) & (M[:, j] == 0)).sum()]])
+                tab = np.array(
+                    [
+                        [
+                            ((M[:, i] > 0) & (M[:, j] > 0)).sum(),
+                            ((M[:, i] > 0) & (M[:, j] == 0)).sum(),
+                        ],
+                        [
+                            ((M[:, i] == 0) & (M[:, j] > 0)).sum(),
+                            ((M[:, i] == 0) & (M[:, j] == 0)).sum(),
+                        ],
+                    ]
+                )
                 if tab.min() == 0:
                     tab = tab + 0.5
                 try:
@@ -277,36 +311,41 @@ def exp_marginal_equivalence(n=8000, n_exam=6, n_lab=6, reps=6):
                     sig += 1
                 pairs.append((names[i], names[j], float(p)))
         hist = np.bincount(deg, minlength=len(names) + 1)
-        results[label] = dict(
-            degree_hist=[int(x) for x in hist],
-            degree_mean=float(deg.mean()),
-            degree_p99=float(np.percentile(deg, 99)),
-            degree_max=int(deg.max()),
-            significant_pairs=int(sig),
-            total_pairs=int(total),
-            pairs=pairs,
-        )
+        results[label] = {
+            "degree_hist": [int(x) for x in hist],
+            "degree_mean": float(deg.mean()),
+            "degree_p99": float(np.percentile(deg, 99)),
+            "degree_max": int(deg.max()),
+            "significant_pairs": int(sig),
+            "total_pairs": int(total),
+            "pairs": pairs,
+        }
     return results
 
 
 # --------------------------------------------------------------- figures
 
+
 def fig_toenail(t):
     fig, axes = plt.subplots(1, 2, figsize=(7.6, 3.0))
 
     ax = axes[0]
-    ax.plot(t["visit_mean"], t["inc_exam"], "o-", color=C["orange"], ms=4,
-            label="found on examination")
-    ax.plot(t["visit_mean"], t["inc_lab"], "s-", color=C["blue"], ms=4,
-            label="found on lab test")
+    ax.plot(
+        t["visit_mean"], t["inc_exam"], "o-", color=C["orange"], ms=4, label="found on examination"
+    )
+    ax.plot(t["visit_mean"], t["inc_lab"], "s-", color=C["blue"], ms=4, label="found on lab test")
     ax.set_xlabel("visits per patient in the period")
     ax.set_ylabel("observed incidence per 1000 PY")
     ax.set_title("Incidence tracks contact, not disease", fontsize=9)
     ax.legend(fontsize=7, frameon=False)
 
     ax = axes[1]
-    ax.bar(["raw", "stratified\nby visit count"], [t["or_raw"], t["or_stratified"]],
-           color=[C["red"], C["green"]], width=0.55)
+    ax.bar(
+        ["raw", "stratified\nby visit count"],
+        [t["or_raw"], t["or_stratified"]],
+        color=[C["red"], C["green"]],
+        width=0.55,
+    )
     ax.axhline(1.0, color="k", lw=0.8, ls=":")
     ax.set_ylabel("odds ratio between two found conditions")
     ax.set_title("The association is entirely shared contact", fontsize=9)
@@ -318,20 +357,29 @@ def fig_toenail(t):
 
 def fig_negative_controls(r):
     fig, ax = plt.subplots(figsize=(5.4, 3.1))
-    order = [("naive", "naive cohort", C["grey"]),
-             ("nco_exam", "negative control,\nwrong channel", C["orange"]),
-             ("plugin", "plug-in channel\nadjustment", C["purple"]),
-             ("channel_model", "channel modelled\n(generative)", C["blue"]),
-             ("nco_lab", "negative control,\nright channel", C["green"])]
+    order = [
+        ("naive", "naive cohort", C["grey"]),
+        ("nco_exam", "negative control,\nwrong channel", C["orange"]),
+        ("plugin", "plug-in channel\nadjustment", C["purple"]),
+        ("channel_model", "channel modelled\n(generative)", C["blue"]),
+        ("nco_lab", "negative control,\nright channel", C["green"]),
+    ]
     ys = np.arange(len(order))[::-1]
-    for y_, (k, lab, col) in zip(ys, order):
+    for y_, (k, _lab, col) in zip(ys, order):
         m, sd = r[k]["mean"], r[k]["sd"]
-        ax.errorbar(m, y_, xerr=1.96 * sd / np.sqrt(len(r[k]["values"])),
-                    fmt="o", ms=6, color=col, capsize=3, elinewidth=1.2)
+        ax.errorbar(
+            m,
+            y_,
+            xerr=1.96 * sd / np.sqrt(len(r[k]["values"])),
+            fmt="o",
+            ms=6,
+            color=col,
+            capsize=3,
+            elinewidth=1.2,
+        )
         ax.text(m, y_ + 0.22, f"{m:.2f}", ha="center", fontsize=7.5, color=col)
     ax.axvline(r["truth"], color="k", ls="--", lw=1.0)
-    ax.text(r["truth"], -0.75, f"truth {r['truth']:.1f}", fontsize=7.5,
-            va="center", ha="center")
+    ax.text(r["truth"], -0.75, f"truth {r['truth']:.1f}", fontsize=7.5, va="center", ha="center")
     ax.set_ylim(-1.0, len(order) - 0.3)
     ax.set_yticks(ys)
     ax.set_yticklabels([o[1] for o in order], fontsize=7.5)
@@ -355,8 +403,10 @@ def fig_marginal(m):
     ax.set_title("Marginals match exactly", fontsize=9)
 
     ax = axes[1]
-    for key, col, lab in [("marginal", C["orange"], "A: independent"),
-                          ("topology", C["blue"], "B: visit-driven")]:
+    for key, col, lab in [
+        ("marginal", C["orange"], "A: independent"),
+        ("topology", C["blue"], "B: visit-driven"),
+    ]:
         d = m[key]["degree_hist"]
         d = np.array(d) / sum(d)
         ax.plot(np.arange(len(d)), d, "o-", color=col, ms=3, label=lab)
@@ -367,8 +417,7 @@ def fig_marginal(m):
 
     ax = axes[2]
     vals = [m["marginal"]["significant_pairs"], m["topology"]["significant_pairs"]]
-    ax.bar(["A: independent", "B: visit-driven"], vals,
-           color=[C["orange"], C["blue"]], width=0.55)
+    ax.bar(["A: independent", "B: visit-driven"], vals, color=[C["orange"], C["blue"]], width=0.55)
     ax.axhline(m["topology"]["total_pairs"], color="k", ls=":", lw=0.8)
     ax.set_ylabel("significant pairs (Bonferroni)")
     ax.set_title(f"of {m['topology']['total_pairs']} possible pairs", fontsize=9)

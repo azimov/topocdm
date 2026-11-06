@@ -26,67 +26,101 @@ import numpy as np
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 import matplotlib
+
 matplotlib.use("Agg")
 import matplotlib.pyplot as plt
 
-from topocdm.scalable import (simulate_sparse, fit_streaming, array_chunks,
-                              fit_propensity_streaming)
-import topocdm as t
 from topocdm.release import make_release, sample_release
+from topocdm.scalable import array_chunks, fit_propensity_streaming, fit_streaming, simulate_sparse
 
 FIG, RES = "figs", "results"
 os.makedirs(FIG, exist_ok=True)
 os.makedirs(RES, exist_ok=True)
-plt.rcParams.update({"figure.dpi": 160, "font.size": 9,
-                     "axes.spines.top": False, "axes.spines.right": False,
-                     "axes.grid": True, "grid.alpha": 0.25})
-C = dict(blue="#2C6E9B", orange="#D9822B", green="#4E8B4A", grey="#8A8A8A")
+plt.rcParams.update(
+    {
+        "figure.dpi": 160,
+        "font.size": 9,
+        "axes.spines.top": False,
+        "axes.spines.right": False,
+        "axes.grid": True,
+        "grid.alpha": 0.25,
+    }
+)
+C = {"blue": "#2C6E9B", "orange": "#D9822B", "green": "#4E8B4A", "grey": "#8A8A8A"}
 
 
 def main():
     print("generating 200k x 1000 CDM ...")
     data, truth = simulate_sparse(n=200_000, c=1000, seed=1)
-    print(f"  {data.n:,} patients, {data.c:,} concepts, {data.total:,} events, "
-          f"density {data.density:.2f}/py, nnz {data.X.nnz:,}")
+    print(
+        f"  {data.n:,} patients, {data.c:,} concepts, {data.total:,} events, "
+        f"density {data.density:.2f}/py, nnz {data.X.nnz:,}"
+    )
     print(f"  a dense matrix would be {data.n * data.c * 8 / 1e9:.2f} GB")
 
     rows = []
     ref_lam = None
     for frac in [1.0, 0.5, 0.25, 0.10, 0.05]:
         t0 = time.time()
-        st = fit_streaming(array_chunks(data, chunk_size=5000, sample_frac=frac),
-                           n=data.n, c=data.c,
-                           concept_group=data.concept_group,
-                           n_groups=5, n_epochs=6, init_sample=5000)
+        st = fit_streaming(
+            array_chunks(data, chunk_size=5000, sample_frac=frac),
+            n=data.n,
+            c=data.c,
+            concept_group=data.concept_group,
+            n_groups=5,
+            n_epochs=6,
+            init_sample=5000,
+        )
         dt = time.time() - t0
         lam = st.params.lam / st.params.lam.sum()
         if ref_lam is None:
             ref_lam = lam
-        rows.append(dict(frac=frac, seconds=dt, epochs=st.epochs,
-                         lam_l1_vs_full=float(np.abs(lam - ref_lam).sum()),
-                         patients_seen=st.n_patients_seen))
+        rows.append(
+            {
+                "frac": frac,
+                "seconds": dt,
+                "epochs": st.epochs,
+                "lam_l1_vs_full": float(np.abs(lam - ref_lam).sum()),
+                "patients_seen": st.n_patients_seen,
+            }
+        )
         print(f"  frac {frac:4.2f}: {dt:6.1f}s  lambda L1 vs full {rows[-1]['lam_l1_vs_full']:.4f}")
 
     peak = resource.getrusage(resource.RUSAGE_SELF).ru_maxrss / 1e9
 
     # the release: how many numbers actually leave
     k = fit_propensity_streaming(array_chunks(data, 5000), st.params)
-    rel = make_release(st.params, data.concept_ids, data.concept_group, k,
-                       data.density, n_patients=data.n, n_events=data.total)
+    rel = make_release(
+        st.params,
+        data.concept_ids,
+        data.concept_group,
+        k,
+        data.density,
+        n_patients=data.n,
+        n_events=data.total,
+    )
     summary = rel.summary()
     print(f"\nrelease summary: {summary}")
 
     # density is a generator parameter
     dens = []
     for d in [2.0, 8.0, 20.0]:
-        syn = sample_release(rel, n_patients=5000, years=5, density=d,
-                             rng=np.random.default_rng(1))
-        dens.append(dict(target=d, realised=syn.density, events=syn.total))
+        syn = sample_release(rel, n_patients=5000, years=5, density=d, rng=np.random.default_rng(1))
+        dens.append({"target": d, "realised": syn.density, "events": syn.total})
 
-    out = dict(scale=rows, peak_rss_gb=peak, release=summary, density=dens,
-               data=dict(n=data.n, c=data.c, events=data.total,
-                         nnz=int(data.X.nnz),
-                         dense_gb=data.n * data.c * 8 / 1e9))
+    out = {
+        "scale": rows,
+        "peak_rss_gb": peak,
+        "release": summary,
+        "density": dens,
+        "data": {
+            "n": data.n,
+            "c": data.c,
+            "events": data.total,
+            "nnz": int(data.X.nnz),
+            "dense_gb": data.n * data.c * 8 / 1e9,
+        },
+    }
     json.dump(out, open(f"{RES}/scale.json", "w"), indent=1)
 
     # ---------------------------------------------------------------- figure
@@ -97,22 +131,25 @@ def main():
     vals = [out["data"]["dense_gb"], out["peak_rss_gb"]]
     bars = ax.bar(labels, vals, color=[C["grey"], C["blue"]], width=0.55)
     for b_, v in zip(bars, vals):
-        ax.text(b_.get_x() + b_.get_width() / 2, v + 0.04, f"{v:.2f} GB",
-                ha="center", fontsize=8)
+        ax.text(b_.get_x() + b_.get_width() / 2, v + 0.04, f"{v:.2f} GB", ha="center", fontsize=8)
     ax.set_ylabel("memory (GB)")
-    ax.set_title(f"{data.total/1e6:.1f}M events, {data.n/1e3:.0f}k patients", fontsize=9)
+    ax.set_title(f"{data.total / 1e6:.1f}M events, {data.n / 1e3:.0f}k patients", fontsize=9)
     ax.set_ylim(0, max(vals) * 1.25)
 
     ax = axes[1]
-    ax.plot([r["frac"] for r in rows], [r["lam_l1_vs_full"] for r in rows],
-            "o-", color=C["orange"], ms=4)
+    ax.plot(
+        [r["frac"] for r in rows],
+        [r["lam_l1_vs_full"] for r in rows],
+        "o-",
+        color=C["orange"],
+        ms=4,
+    )
     ax.set_xlabel("fraction of patients used")
     ax.set_ylabel(r"$L_1$ distance of $\lambda$ from full fit")
     ax.set_title("Subsampling barely moves the answer", fontsize=9)
 
     ax = axes[2]
-    ax.plot([d["target"] for d in dens], [d["realised"] for d in dens],
-            "o", color=C["green"], ms=6)
+    ax.plot([d["target"] for d in dens], [d["realised"] for d in dens], "o", color=C["green"], ms=6)
     lim = [0, max(d["target"] for d in dens) * 1.1]
     ax.plot(lim, lim, "k:", lw=0.8)
     ax.set_xlabel("requested density (events / person-year)")

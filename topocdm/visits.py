@@ -33,28 +33,37 @@ import pandas as pd
 
 @dataclass
 class VisitModel:
-    trans: np.ndarray          # (H, H) P(next group | current group)
-    start: np.ndarray          # (H,) distribution of the group at a first visit
+    trans: np.ndarray  # (H, H) P(next group | current group)
+    start: np.ndarray  # (H,) distribution of the group at a first visit
     visits_per_patient: float  # mean
-    records_per_visit: np.ndarray   # empirical distribution, sampled from
-    concept_group: np.ndarray = None   # (C,) group per concept column
+    records_per_visit: np.ndarray  # empirical distribution, sampled from
+    concept_group: np.ndarray | None = None  # (C,) group per concept column
 
     def summary(self) -> dict:
         H = self.trans.shape[0]
         marg = self.trans.mean(axis=0)
         with np.errstate(divide="ignore", invalid="ignore"):
             lift = np.log2(np.maximum(self.trans, 1e-12) / np.maximum(marg, 1e-12))
-        mi = float(np.nansum(self.trans * np.log2(
-            np.maximum(self.trans, 1e-12) / np.maximum(marg, 1e-12))) / H)
-        return dict(n_groups=int(H), mean_visits=float(self.visits_per_patient),
-                    mean_records_per_visit=float(np.mean(self.records_per_visit)),
-                    persistence=float(np.mean(np.diag(self.trans))),
-                    lift_range=(float(np.nanmin(lift)), float(np.nanmax(lift))))
+        float(
+            np.nansum(self.trans * np.log2(np.maximum(self.trans, 1e-12) / np.maximum(marg, 1e-12)))
+            / H
+        )
+        return {
+            "n_groups": int(H),
+            "mean_visits": float(self.visits_per_patient),
+            "mean_records_per_visit": float(np.mean(self.records_per_visit)),
+            "persistence": float(np.mean(np.diag(self.trans))),
+            "lift_range": (float(np.nanmin(lift)), float(np.nanmax(lift))),
+        }
 
 
-def fit_visit_model(visits: pd.DataFrame, events: pd.DataFrame,
-                    concept_group_of: dict, n_groups: int,
-                    concept_group: np.ndarray | None = None) -> VisitModel:
+def fit_visit_model(
+    visits: pd.DataFrame,
+    events: pd.DataFrame,
+    concept_group_of: dict,
+    n_groups: int,
+    concept_group: np.ndarray | None = None,
+) -> VisitModel:
     """Count transitions between consecutive visits' concept groups.
 
     A visit's "group" is taken to be the modal concept group of the records on
@@ -68,8 +77,7 @@ def fit_visit_model(visits: pd.DataFrame, events: pd.DataFrame,
     ev["grp"] = ev["grp"].astype(int)
 
     # modal group per (patient, date)
-    per_visit = (ev.groupby(["person_id", "event_date", "grp"]).size()
-                   .rename("n").reset_index())
+    per_visit = ev.groupby(["person_id", "event_date", "grp"]).size().rename("n").reset_index()
     idx = per_visit.groupby(["person_id", "event_date"])["n"].idxmax()
     g = per_visit.loc[idx].sort_values(["person_id", "event_date"])
     g["next_grp"] = g.groupby("person_id")["grp"].shift(-1)
@@ -87,14 +95,16 @@ def fit_visit_model(visits: pd.DataFrame, events: pd.DataFrame,
     vpp = g.groupby("person_id")["event_date"].nunique()
     rpv = per_visit.groupby(["person_id", "event_date"])["n"].sum().to_numpy()
 
-    return VisitModel(trans=trans, start=start,
-                      visits_per_patient=float(vpp.mean()),
-                      records_per_visit=rpv,
-                      concept_group=concept_group)
+    return VisitModel(
+        trans=trans,
+        start=start,
+        visits_per_patient=float(vpp.mean()),
+        records_per_visit=rpv,
+        concept_group=concept_group,
+    )
 
 
-def assign_to_visits(counts: np.ndarray, n_visits: int, model: VisitModel,
-                     rng) -> list:
+def assign_to_visits(counts: np.ndarray, n_visits: int, model: VisitModel, rng) -> list:
     """Place a patient's records into an ordered sequence of visits.
 
     Returns a list of (visit_index, concept_index) pairs. The counts per
@@ -102,6 +112,8 @@ def assign_to_visits(counts: np.ndarray, n_visits: int, model: VisitModel,
     """
     if n_visits <= 0:
         return []
+    if model.concept_group is None:
+        raise ValueError("model.concept_group is required")
     H = model.trans.shape[0]
     # a group sequence for this patient's visits
     seq = np.empty(n_visits, dtype=int)
@@ -112,12 +124,12 @@ def assign_to_visits(counts: np.ndarray, n_visits: int, model: VisitModel,
     # visits available for each group
     by_group = {h: np.nonzero(seq == h)[0] for h in range(H)}
 
-    out = []
+    out: list[tuple[int, int]] = []
     for j in np.nonzero(counts > 0)[0]:
         h = int(model.concept_group[j])
         slots = by_group.get(h)
         if slots is None or slots.size == 0:
-            slots = np.arange(n_visits)          # fall back: any visit
+            slots = np.arange(n_visits)  # fall back: any visit
         pick = rng.choice(slots, size=int(counts[j]), replace=True)
         out.extend((int(v), int(j)) for v in pick)
     return out
@@ -145,24 +157,27 @@ def assign_to_visits(counts: np.ndarray, n_visits: int, model: VisitModel,
 
 @dataclass
 class PresenceModel:
-    p_stay: np.ndarray        # (H,)
-    p_enter: np.ndarray       # (H,)
-    base: np.ndarray          # (H,) marginal presence probability
-    concept_group: np.ndarray = None
+    p_stay: np.ndarray  # (H,)
+    p_enter: np.ndarray  # (H,)
+    base: np.ndarray  # (H,) marginal presence probability
+    concept_group: np.ndarray | None = None
     mean_visits: float = 1.0
 
 
-def fit_presence_model(events: pd.DataFrame, concept_group_of: dict,
-                       n_groups: int, concept_group: np.ndarray,
-                       visits: pd.DataFrame | None = None) -> PresenceModel:
+def fit_presence_model(
+    events: pd.DataFrame,
+    concept_group_of: dict,
+    n_groups: int,
+    concept_group: np.ndarray,
+    visits: pd.DataFrame | None = None,
+) -> PresenceModel:
     """Estimate per-group persistence from consecutive visits."""
     ev = events.copy()
     ev["grp"] = ev["concept_id"].map(concept_group_of)
     ev = ev.dropna(subset=["grp"])
     ev["grp"] = ev["grp"].astype(int)
 
-    pv = (ev.groupby(["person_id", "event_date", "grp"]).size()
-            .rename("n").reset_index())
+    pv = ev.groupby(["person_id", "event_date", "grp"]).size().rename("n").reset_index()
     pv = pv.sort_values(["person_id", "event_date"])
     # presence matrix per (patient, visit index)
     pv["visit_rank"] = pv.groupby("person_id")["event_date"].rank("dense").astype(int)
@@ -170,8 +185,10 @@ def fit_presence_model(events: pd.DataFrame, concept_group_of: dict,
     for (pid, vr), g in pv.groupby(["person_id", "visit_rank"]):
         pres[(pid, vr)] = set(g["grp"].tolist())
 
-    stay = np.zeros(n_groups); stay_tot = np.zeros(n_groups)
-    enter = np.zeros(n_groups); enter_tot = np.zeros(n_groups)
+    stay = np.zeros(n_groups)
+    stay_tot = np.zeros(n_groups)
+    enter = np.zeros(n_groups)
+    enter_tot = np.zeros(n_groups)
     for (pid, vr), s in pres.items():
         prev = pres.get((pid, vr - 1))
         if prev is None:
@@ -188,11 +205,15 @@ def fit_presence_model(events: pd.DataFrame, concept_group_of: dict,
     p_enter = np.where(enter_tot > 0, enter / np.maximum(enter_tot, 1), 0.05)
     base = np.array([np.mean([h in s for s in pres.values()]) for h in range(n_groups)])
     n_vis = len({k[1] for k in pres}) and np.mean(
-        [max(vr for (p, vr) in pres if p == pid)
-         for pid in {k[0] for k in pres}])
-    return PresenceModel(p_stay=p_stay, p_enter=p_enter, base=base,
-                         concept_group=concept_group,
-                         mean_visits=float(n_vis))
+        [max(vr for (p, vr) in pres if p == pid) for pid in {k[0] for k in pres}]
+    )
+    return PresenceModel(
+        p_stay=p_stay,
+        p_enter=p_enter,
+        base=base,
+        concept_group=concept_group,
+        mean_visits=float(n_vis),
+    )
 
 
 def sample_presence(n_visits: int, model: PresenceModel, rng) -> np.ndarray:
@@ -208,9 +229,13 @@ def sample_presence(n_visits: int, model: PresenceModel, rng) -> np.ndarray:
     return out
 
 
-def assign_with_presence(counts: np.ndarray, presence: np.ndarray,
-                         model: PresenceModel, rng,
-                         month_weight: np.ndarray | None = None) -> list:
+def assign_with_presence(
+    counts: np.ndarray,
+    presence: np.ndarray,
+    model: PresenceModel,
+    rng,
+    month_weight: np.ndarray | None = None,
+) -> list:
     """Assign records to visits using the sampled presence matrix.
 
     `month_weight` is an optional (n_visits,) vector used to bias placement
@@ -219,7 +244,9 @@ def assign_with_presence(counts: np.ndarray, presence: np.ndarray,
     n_visits, H = presence.shape
     if n_visits == 0:
         return []
-    out = []
+    if model.concept_group is None:
+        raise ValueError("model.concept_group is required")
+    out: list[tuple[int, int]] = []
     for j in np.nonzero(counts > 0)[0]:
         h = int(model.concept_group[j])
         slots = np.nonzero(presence[:, h])[0]

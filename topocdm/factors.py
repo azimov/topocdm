@@ -40,8 +40,8 @@ import numpy as np
 
 @dataclass
 class FactorFit:
-    a: np.ndarray          # (N, K) patient loadings
-    b: np.ndarray          # (C, K) concept loadings (orthonormal columns)
+    a: np.ndarray  # (N, K) patient loadings
+    b: np.ndarray  # (C, K) concept loadings (orthonormal columns)
     history: list
 
 
@@ -54,9 +54,16 @@ def _mu(mu0, a, b, clip: float = 8.0):
     return mu0 * np.exp(np.clip(a @ b.T, -clip, clip))
 
 
-def fit_factors(mu0: np.ndarray, X: np.ndarray, K: int = 20, n_iter: int = 12,
-                seed: int = 0, ridge: float = 1e-6, step: float = 0.25,
-                verbose: bool = False) -> FactorFit:
+def fit_factors(
+    mu0: np.ndarray,
+    X: np.ndarray,
+    K: int = 20,
+    n_iter: int = 12,
+    seed: int = 0,
+    ridge: float = 1e-6,
+    step: float = 0.25,
+    verbose: bool = False,
+) -> FactorFit:
     """Alternating diagonal-Newton fit of the rank-K log-scale interaction."""
     rng = np.random.default_rng(seed)
     N, C = mu0.shape
@@ -64,16 +71,16 @@ def fit_factors(mu0: np.ndarray, X: np.ndarray, K: int = 20, n_iter: int = 12,
     # factors that are only identified up to rotation diverges
     a = np.zeros((N, K))
     b = rng.normal(0, 0.01, size=(C, K))
-    history = []
+    history: list[float] = []
 
     for it in range(n_iter):
         # ---- Newton step for a given b
         mu = _mu(mu0, a, b)
-        a = a + step * ((X - mu) @ b) / (mu @ (b ** 2) + ridge)
+        a = a + step * ((X - mu) @ b) / (mu @ (b**2) + ridge)
 
         # ---- Newton step for b given a
         mu = _mu(mu0, a, b)
-        b = b + step * ((X - mu).T @ a) / (mu.T @ (a ** 2) + ridge)
+        b = b + step * ((X - mu).T @ a) / (mu.T @ (a**2) + ridge)
 
         # a and b are identified only up to rotation; make b orthonormal and
         # rotate a to match, leaving a b^T unchanged
@@ -84,7 +91,7 @@ def fit_factors(mu0: np.ndarray, X: np.ndarray, K: int = 20, n_iter: int = 12,
         mu = _mu(mu0, a, b)
         ll = float(np.sum(X * np.log(np.maximum(mu, 1e-12)) - mu))
         if history and ll < history[-1]:
-            break                      # damped step overshot; keep the best
+            break  # damped step overshot; keep the best
         history.append(ll)
         if verbose:
             print(f"  iter {it:2d}  ll {ll:,.1f}")

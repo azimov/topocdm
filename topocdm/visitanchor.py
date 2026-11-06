@@ -38,10 +38,10 @@ WITHIN_VISIT = ("condition", "drug", "measurement", "observation", "procedure")
 
 @dataclass
 class VisitAnchorFit:
-    visit_counts: np.ndarray = None          # (n_observed,) visits per patient
-    visit_durations: np.ndarray = None       # (n_observed,) days
-    visit_types: np.ndarray = None           # visit_concept_id values
-    visit_type_probs: np.ndarray = None
+    visit_counts: np.ndarray = None  # type: ignore[assignment]  # (n_observed,) visits per patient
+    visit_durations: np.ndarray = None  # type: ignore[assignment]  # (n_observed,) days
+    visit_types: np.ndarray = None  # type: ignore[assignment]  # visit_concept_id values
+    visit_type_probs: np.ndarray = None  # type: ignore[assignment]
     counts_per_visit: dict = field(default_factory=dict)  # domain -> counts
     concept_ids: dict = field(default_factory=dict)
     concept_probs: dict = field(default_factory=dict)
@@ -64,8 +64,9 @@ def _empirical_counts(values: np.ndarray):
     return np.quantile(v, np.linspace(0, 1, 101))
 
 
-def fit_visitanchor(events: pd.DataFrame, periods: pd.DataFrame,
-                    visits: pd.DataFrame, seed: int = 0) -> VisitAnchorFit:
+def fit_visitanchor(
+    events: pd.DataFrame, periods: pd.DataFrame, visits: pd.DataFrame, seed: int = 0
+) -> VisitAnchorFit:
     """Fit the visit-anchored model.
 
     events: person_id, domain, concept_id, start_date, end_date,
@@ -89,15 +90,14 @@ def fit_visitanchor(events: pd.DataFrame, periods: pd.DataFrame,
         visit_durations=visit_days.to_numpy(dtype=float),
         visit_types=vt.index.to_numpy(dtype=np.int64),
         visit_type_probs=(vt / vt.sum()).to_numpy(dtype=float),
-        n_patients=int(len(persons)), n_visits=int(len(v)))
+        n_patients=int(len(persons)),
+        n_visits=int(len(v)),
+    )
 
-    key = pd.MultiIndex.from_frame(
-        v[["person_id", "visit_occurrence_id"]])
+    key = pd.MultiIndex.from_frame(v[["person_id", "visit_occurrence_id"]])
     for d in WITHIN_VISIT:
-        ev = events[(events["domain"] == d)
-                    & events["visit_occurrence_id"].notna()]
-        cnt = (ev.groupby(["person_id", "visit_occurrence_id"]).size()
-               .reindex(key, fill_value=0))
+        ev = events[(events["domain"] == d) & events["visit_occurrence_id"].notna()]
+        cnt = ev.groupby(["person_id", "visit_occurrence_id"]).size().reindex(key, fill_value=0)
         fit.counts_per_visit[d] = cnt.to_numpy(dtype=int)
         fit.n_events[d] = int(len(ev))
         vc = ev["concept_id"].value_counts()
@@ -108,10 +108,10 @@ def fit_visitanchor(events: pd.DataFrame, periods: pd.DataFrame,
     for d in pdm.INTERVAL_DOMAINS:
         fit.duration[d] = pdm.fit_durations(events, d)
 
-    ob_start = periods.set_index("person_id").loc[persons, "start_date"].to_numpy(
-        dtype="datetime64[D]")
-    ob_end = periods.set_index("person_id").loc[persons, "end_date"].to_numpy(
-        dtype="datetime64[D]")
+    ob_start = (
+        periods.set_index("person_id").loc[persons, "start_date"].to_numpy(dtype="datetime64[D]")
+    )
+    ob_end = periods.set_index("person_id").loc[persons, "end_date"].to_numpy(dtype="datetime64[D]")
     death = events[events["domain"] == "death"]
     died = death.set_index("person_id")["start_date"].to_dict()
     follow = (ob_end - ob_start) / np.timedelta64(1, "D")
@@ -121,8 +121,10 @@ def fit_visitanchor(events: pd.DataFrame, periods: pd.DataFrame,
             dd = np.datetime64(died[int(p)], "D")
             t = (dd - ob_start[i]) / np.timedelta64(1, "D")
             frac_times.append(float(np.clip(t / max(follow[i], 1.0), 0.0, 1.0)))
-    fit.death = dict(frac=float(len(frac_times) / len(persons)),
-                     frac_times=np.asarray(frac_times, dtype=float))
+    fit.death = {
+        "frac": float(len(frac_times) / len(persons)),
+        "frac_times": np.asarray(frac_times, dtype=float),
+    }
     return fit
 
 
@@ -131,8 +133,7 @@ def _sample_counts(pool: np.ndarray, n: int, rng) -> np.ndarray:
     return rng.choice(np.asarray(pool, dtype=np.int64), size=n)
 
 
-def generate_visitanchor(fit: VisitAnchorFit, periods: pd.DataFrame,
-                         seed: int = 0) -> dict:
+def generate_visitanchor(fit: VisitAnchorFit, periods: pd.DataFrame, seed: int = 0) -> dict:
     """Generate a visit-anchored cohort and its OMOP tables.
 
     Every event is attached to a visit and shares its date. Durations are
@@ -144,7 +145,7 @@ def generate_visitanchor(fit: VisitAnchorFit, periods: pd.DataFrame,
     e = periods["end_date"].to_numpy(dtype="datetime64[D]")
 
     n_visits = _sample_counts(fit.visit_counts, n, rng)
-    rows = []          # (person_id, domain, concept_id, start_date)
+    rows = []  # (person_id, domain, concept_id, start_date)
     for i in range(n):
         k = int(n_visits[i])
         if k <= 0:
@@ -161,13 +162,11 @@ def generate_visitanchor(fit: VisitAnchorFit, periods: pd.DataFrame,
                 cnt = int(_sample_counts(fit.counts_per_visit[d], 1, rng)[0])
                 if cnt <= 0:
                     continue
-                cids = rng.choice(fit.concept_ids[d], size=cnt,
-                                  p=fit.concept_probs[d])
+                cids = rng.choice(fit.concept_ids[d], size=cnt, p=fit.concept_probs[d])
                 for c in cids:
                     rows.append((i + 1, d, int(c), day))
 
-    events = pd.DataFrame(rows, columns=["person_id", "domain", "concept_id",
-                                         "start_date"])
+    events = pd.DataFrame(rows, columns=["person_id", "domain", "concept_id", "start_date"])
     events["start_date"] = pd.to_datetime(events["start_date"])
     events["end_date"] = pd.NaT
 
@@ -179,8 +178,9 @@ def generate_visitanchor(fit: VisitAnchorFit, periods: pd.DataFrame,
             continue
         dur = pdm.sample_durations(fit.duration[d], int(m.sum()), rng)
         starts = events.loc[m, "start_date"].to_numpy(dtype="datetime64[D]")
-        obe = pd.to_datetime(events.loc[m, "person_id"].map(ob_end_map)) \
-            .to_numpy(dtype="datetime64[D]")
+        obe = pd.to_datetime(events.loc[m, "person_id"].map(ob_end_map)).to_numpy(
+            dtype="datetime64[D]"
+        )
         max_dur = np.maximum((obe - starts) / np.timedelta64(1, "D"), 0)
         dur_days = np.minimum(dur.astype(float), max_dur).astype(np.int64)
         ends = starts + dur_days.astype("timedelta64[D]")
@@ -195,13 +195,13 @@ def generate_visitanchor(fit: VisitAnchorFit, periods: pd.DataFrame,
     else:
         t_days = np.array([], dtype="timedelta64[D]")
     death_date = s[died] + t_days
-    death = pd.DataFrame({"person_id": np.arange(1, n + 1)[died],
-                          "death_date": pd.to_datetime(death_date)})
+    death = pd.DataFrame(
+        {"person_id": np.arange(1, n + 1)[died], "death_date": pd.to_datetime(death_date)}
+    )
 
     if len(death):
         dmap = death.set_index("person_id")["death_date"]
-        dd = pd.to_datetime(events["person_id"].map(dmap)).to_numpy(
-            dtype="datetime64[ns]")
+        dd = pd.to_datetime(events["person_id"].map(dmap)).to_numpy(dtype="datetime64[ns]")
         start_ns = events["start_date"].to_numpy(dtype="datetime64[ns]")
         keep = np.isnat(dd) | (start_ns <= dd)
         events = events[keep].copy()

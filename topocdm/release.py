@@ -36,7 +36,7 @@ class Release:
     B: np.ndarray | None = None
     pi: np.ndarray | None = None
     propensity_shape: float = 1.0
-    density: float = 1.0            # events per person-year, as observed
+    density: float = 1.0  # events per person-year, as observed
     # person-time-weighted mean of the fitted propensities. The unweighted mean
     # is 1 by the identifiability constraint, but that is not the population
     # rate: patients with long observation windows have lower fitted u, so the
@@ -56,24 +56,32 @@ class Release:
         """How many numbers this release actually contains."""
         n = len(self.lam) + 1 + len(self.concept_ids)
         if self.B is not None:
-            n += self.B.size + len(self.pi)
+            n += self.B.size + (0 if self.pi is None else len(self.pi))
         return int(n)
 
     def summary(self) -> dict:
-        return dict(
-            n_concepts=self.n_concepts,
-            n_concept_groups=int(self.concept_group.max()) + 1,
-            n_patient_groups=0 if self.B is None else int(self.B.shape[0]),
-            n_parameters=self.n_parameters,
-            density=self.density,
-            propensity_shape=self.propensity_shape,
-            contains_patient_level_parameters=False,
-        )
+        return {
+            "n_concepts": self.n_concepts,
+            "n_concept_groups": int(self.concept_group.max()) + 1,
+            "n_patient_groups": 0 if self.B is None else int(self.B.shape[0]),
+            "n_parameters": self.n_parameters,
+            "density": self.density,
+            "propensity_shape": self.propensity_shape,
+            "contains_patient_level_parameters": False,
+        }
 
 
-def make_release(params, concept_ids, concept_group, propensity_shape: float,
-                 density: float, n_patients: int = 0, n_events: int = 0,
-                 meta: dict | None = None, pi=None) -> Release:
+def make_release(
+    params,
+    concept_ids,
+    concept_group,
+    propensity_shape: float,
+    density: float,
+    n_patients: int = 0,
+    n_events: int = 0,
+    meta: dict | None = None,
+    pi=None,
+) -> Release:
     """Build a Release from fitted parameters, dropping every patient term.
 
     `pi` -- the group mixing weights -- is a global parameter and belongs in the
@@ -84,22 +92,32 @@ def make_release(params, concept_ids, concept_group, propensity_shape: float,
     B = None if params.B is None else np.asarray(params.B, dtype=float)
     if B is not None:
         if pi is None:
-            cnt = np.bincount(np.asarray(params.patient_group),
-                              minlength=B.shape[0]).astype(float)
+            cnt = np.bincount(np.asarray(params.patient_group), minlength=B.shape[0]).astype(float)
             pi = np.maximum(cnt, 1e-9) / max(cnt.sum(), 1.0)
         pi = np.asarray(pi, dtype=float)
         pi = pi / pi.sum()
-    return Release(lam=np.asarray(params.lam, dtype=float),
-                   concept_group=np.asarray(concept_group),
-                   concept_ids=np.asarray(concept_ids),
-                   B=B, pi=pi, propensity_shape=float(propensity_shape),
-                   density=float(density), n_patients_fitted=int(n_patients),
-                   n_events_fitted=int(n_events), meta=meta or {})
+    return Release(
+        lam=np.asarray(params.lam, dtype=float),
+        concept_group=np.asarray(concept_group),
+        concept_ids=np.asarray(concept_ids),
+        B=B,
+        pi=pi,
+        propensity_shape=float(propensity_shape),
+        density=float(density),
+        n_patients_fitted=int(n_patients),
+        n_events_fitted=int(n_events),
+        meta=meta or {},
+    )
 
 
-def sample_release(release: Release, n_patients: int, years: float = 5.0,
-                   density: float | None = None, rng=None,
-                   person_time: np.ndarray | None = None) -> SparseCDM:
+def sample_release(
+    release: Release,
+    n_patients: int,
+    years: float = 5.0,
+    density: float | None = None,
+    rng=None,
+    person_time: np.ndarray | None = None,
+) -> SparseCDM:
     """Draw a synthetic cohort at a chosen density.
 
     Events are allocated multinomially to a *fixed total* M = density * sum(T),
@@ -139,7 +157,11 @@ def sample_release(release: Release, n_patients: int, years: float = 5.0,
 
     rows, cols, vals = [], [], []
     for i in np.nonzero(counts > 0)[0]:
-        q = release.lam if release.B is None else release.lam * release.B[g[i], release.concept_group]
+        q = (
+            release.lam
+            if release.B is None
+            else release.lam * release.B[g[i], release.concept_group]
+        )
         draw = rng.multinomial(int(counts[i]), q / q.sum())
         nz = np.nonzero(draw)[0]
         if nz.size:
@@ -148,8 +170,12 @@ def sample_release(release: Release, n_patients: int, years: float = 5.0,
             vals.append(draw[nz].astype(float))
 
     X = sparse.csr_matrix(
-        (np.concatenate(vals), (np.concatenate(rows), np.concatenate(cols))),
-        shape=(n_patients, c))
-    return SparseCDM(X=X, T=T, concept_group=release.concept_group,
-                     concept_ids=release.concept_ids,
-                     person_ids=np.arange(1, n_patients + 1))
+        (np.concatenate(vals), (np.concatenate(rows), np.concatenate(cols))), shape=(n_patients, c)
+    )
+    return SparseCDM(
+        X=X,
+        T=T,
+        concept_group=release.concept_group,
+        concept_ids=release.concept_ids,
+        person_ids=np.arange(1, n_patients + 1),
+    )

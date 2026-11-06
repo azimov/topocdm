@@ -73,20 +73,21 @@ class ConceptVocab:
         if self.vocabulary_id is None:
             self.vocabulary_id = np.full(len(self.concept_id), "Unknown", dtype=object)
         if self.concept_name is None:
-            self.concept_name = np.array([f"concept {c}" for c in self.concept_id],
-                                         dtype=object)
+            self.concept_name = np.array([f"concept {c}" for c in self.concept_id], dtype=object)
         bad = ~np.isin(self.domain_id, list(DOMAIN_TO_TABLE))
         if bad.any():
             raise ValueError(
                 f"{int(bad.sum())} concepts have a domain with no CDM table: "
-                f"{sorted(set(self.domain_id[bad]))[:5]}")
+                f"{sorted(set(self.domain_id[bad]))[:5]}"
+            )
 
     def __len__(self):
         return len(self.concept_id)
 
     def table_for(self, concept_ids) -> np.ndarray:
-        idx = {int(c): t for c, t in zip(self.concept_id,
-                                         [DOMAIN_TO_TABLE[d] for d in self.domain_id])}
+        idx = {
+            int(c): t for c, t in zip(self.concept_id, [DOMAIN_TO_TABLE[d] for d in self.domain_id])
+        }
         try:
             return np.array([idx[int(c)] for c in concept_ids], dtype=object)
         except KeyError as exc:
@@ -111,11 +112,19 @@ def visits_per_patient(events: np.ndarray, rng) -> np.ndarray:
     return v
 
 
-def generate_omop_tables(X, T, vocab: ConceptVocab, start_date: str = "2015-01-01",
-                         person_id_offset: int = 0, id_offset: int = 0,
-                         rng=None, gender_ratio: float = 0.5,
-                         age_range=(18, 90), type_concept_id: int = 32817,
-                         emit_person_columns: bool = True) -> dict:
+def generate_omop_tables(
+    X,
+    T,
+    vocab: ConceptVocab,
+    start_date: str = "2015-01-01",
+    person_id_offset: int = 0,
+    id_offset: int = 0,
+    rng=None,
+    gender_ratio: float = 0.5,
+    age_range=(18, 90),
+    type_concept_id: int = 32817,
+    emit_person_columns: bool = True,
+) -> dict:
     """Turn a count matrix into OMOP domain tables.
 
     `X` is (patients x concepts) counts; `T` is person-time in years and sets
@@ -140,62 +149,74 @@ def generate_omop_tables(X, T, vocab: ConceptVocab, start_date: str = "2015-01-0
     year_of_birth = rng.integers(age_range[0], age_range[1], size=n)
     year_of_birth = (op_start.year - year_of_birth).astype(int)
     gender = np.where(rng.random(n) < gender_ratio, GENDER_FEMALE, GENDER_MALE)
-    person = pd.DataFrame({
-        "person_id": person_ids,
-        "gender_concept_id": gender,
-        "year_of_birth": year_of_birth,
-        "month_of_birth": rng.integers(1, 13, size=n),
-        "day_of_birth": rng.integers(1, 29, size=n),
-        "race_concept_id": RACE_UNKNOWN,
-        "ethnicity_concept_id": ETHNICITY_UNKNOWN,
-        "person_source_value": [f"synth-{i}" for i in person_ids],
-        "gender_source_value": np.where(gender == GENDER_FEMALE, "F", "M"),
-        "gender_source_concept_id": gender,
-        "race_source_value": "unknown",
-        "race_source_concept_id": RACE_UNKNOWN,
-        "ethnicity_source_value": "unknown",
-        "ethnicity_source_concept_id": ETHNICITY_UNKNOWN,
-    }) if emit_person_columns else None
+    person = (
+        pd.DataFrame(
+            {
+                "person_id": person_ids,
+                "gender_concept_id": gender,
+                "year_of_birth": year_of_birth,
+                "month_of_birth": rng.integers(1, 13, size=n),
+                "day_of_birth": rng.integers(1, 29, size=n),
+                "race_concept_id": RACE_UNKNOWN,
+                "ethnicity_concept_id": ETHNICITY_UNKNOWN,
+                "person_source_value": [f"synth-{i}" for i in person_ids],
+                "gender_source_value": np.where(gender == GENDER_FEMALE, "F", "M"),
+                "gender_source_concept_id": gender,
+                "race_source_value": "unknown",
+                "race_source_concept_id": RACE_UNKNOWN,
+                "ethnicity_source_value": "unknown",
+                "ethnicity_source_concept_id": ETHNICITY_UNKNOWN,
+            }
+        )
+        if emit_person_columns
+        else None
+    )
 
-    obs_period = pd.DataFrame({
-        "observation_period_id": np.arange(1, n + 1) + id_offset,
-        "person_id": person_ids,
-        "observation_period_start_date": _dates(op_start, np.zeros(n)),
-        "observation_period_end_date": _dates(op_start, op_end_days),
-        "period_type_concept_id": type_concept_id,
-    })
+    obs_period = pd.DataFrame(
+        {
+            "observation_period_id": np.arange(1, n + 1) + id_offset,
+            "person_id": person_ids,
+            "observation_period_start_date": _dates(op_start, np.zeros(n)),
+            "observation_period_end_date": _dates(op_start, op_end_days),
+            "period_type_concept_id": type_concept_id,
+        }
+    )
 
     # ---------------- visits ----------------
     events_total = X.sum(axis=1).astype(int)
     n_visits = visits_per_patient(events_total, rng)
     visit_person = np.repeat(person_ids, n_visits)
-    visit_day = np.concatenate([
-        np.sort(rng.integers(0, max(int(d), 1), size=v)) if v else np.empty(0, dtype=int)
-        for v, d in zip(n_visits, op_days)
-    ]).astype(int)
+    visit_day = np.concatenate(
+        [
+            np.sort(rng.integers(0, max(int(d), 1), size=v)) if v else np.empty(0, dtype=int)
+            for v, d in zip(n_visits, op_days)
+        ]
+    ).astype(int)
     visit_ids = np.arange(1, len(visit_person) + 1) + id_offset
-    visit = pd.DataFrame({
-        "visit_occurrence_id": visit_ids,
-        "person_id": visit_person,
-        "visit_concept_id": 9202,          # 'Outpatient Visit'
-        "visit_start_date": _dates(op_start, visit_day),
-        "visit_end_date": _dates(op_start, visit_day),
-        "visit_type_concept_id": type_concept_id,
-        "visit_source_value": "synthetic outpatient",
-        "visit_source_concept_id": 9202,
-        "discharge_to_concept_id": 0,
-        "admitted_from_concept_id": 0,
-    })
+    visit = pd.DataFrame(
+        {
+            "visit_occurrence_id": visit_ids,
+            "person_id": visit_person,
+            "visit_concept_id": 9202,  # 'Outpatient Visit'
+            "visit_start_date": _dates(op_start, visit_day),
+            "visit_end_date": _dates(op_start, visit_day),
+            "visit_type_concept_id": type_concept_id,
+            "visit_source_value": "synthetic outpatient",
+            "visit_source_concept_id": 9202,
+            "discharge_to_concept_id": 0,
+            "admitted_from_concept_id": 0,
+        }
+    )
 
     # map (person, visit index) -> visit_occurrence_id
     visit_ptr = {}
     pos = 0
     for pid, v in zip(person_ids, n_visits):
-        visit_ptr[int(pid)] = visit_ids[pos:pos + v]
+        visit_ptr[int(pid)] = visit_ids[pos : pos + v]
         pos += v
 
     # ---------------- events ----------------
-    tables = {}
+    tables: dict[str, list] = {}
     for j in range(c):
         table = DOMAIN_TO_TABLE[vocab.domain_id[j]]
         counts = X[:, j].astype(int)
@@ -208,66 +229,94 @@ def generate_omop_tables(X, T, vocab: ConceptVocab, start_date: str = "2015-01-0
         k = 0
         for r in rows:
             m = counts[r]
-            vid[k:k + m] = rng.choice(visit_ptr[int(person_ids[r])], size=m)
+            vid[k : k + m] = rng.choice(visit_ptr[int(person_ids[r])], size=m)
             k += m
         vmap = dict(zip(visit_ids, visit_day))
         day = np.array([vmap[int(v)] for v in vid], dtype=int)
 
-        ev = pd.DataFrame({
-            "person_id": pid,
-            "concept_id": int(vocab.concept_id[j]),
-            "date": _dates(op_start, day),
-            "visit_occurrence_id": vid,
-            "source_value": str(vocab.concept_name[j]),
-            "source_concept_id": int(vocab.concept_id[j]),
-            "type_concept_id": type_concept_id,
-        })
+        ev = pd.DataFrame(
+            {
+                "person_id": pid,
+                "concept_id": int(vocab.concept_id[j]),
+                "date": _dates(op_start, day),
+                "visit_occurrence_id": vid,
+                "source_value": ("" if vocab.concept_name is None else str(vocab.concept_name[j])),
+                "source_concept_id": int(vocab.concept_id[j]),
+                "type_concept_id": type_concept_id,
+            }
+        )
         tables.setdefault(table, []).append(ev)
 
-    out = {"person": person, "observation_period": obs_period,
-           "visit_occurrence": visit}
+    out = {"person": person, "observation_period": obs_period, "visit_occurrence": visit}
 
     field_names = {
-        "condition_occurrence": ("condition_occurrence_id", "condition_concept_id",
-                                 "condition_start_date", "condition_source_value",
-                                 "condition_source_concept_id"),
-        "drug_exposure": ("drug_exposure_id", "drug_concept_id",
-                          "drug_exposure_start_date", "drug_source_value",
-                          "drug_source_concept_id"),
-        "procedure_occurrence": ("procedure_occurrence_id", "procedure_concept_id",
-                                 "procedure_date", "procedure_source_value",
-                                 "procedure_source_concept_id"),
-        "measurement": ("measurement_id", "measurement_concept_id",
-                        "measurement_date", "measurement_source_value",
-                        "measurement_source_concept_id"),
-        "observation": ("observation_id", "observation_concept_id",
-                        "observation_date", "observation_source_value",
-                        "observation_source_concept_id"),
-        "device_exposure": ("device_exposure_id", "device_concept_id",
-                            "device_exposure_start_date", "device_source_value",
-                            "device_source_concept_id"),
+        "condition_occurrence": (
+            "condition_occurrence_id",
+            "condition_concept_id",
+            "condition_start_date",
+            "condition_source_value",
+            "condition_source_concept_id",
+        ),
+        "drug_exposure": (
+            "drug_exposure_id",
+            "drug_concept_id",
+            "drug_exposure_start_date",
+            "drug_source_value",
+            "drug_source_concept_id",
+        ),
+        "procedure_occurrence": (
+            "procedure_occurrence_id",
+            "procedure_concept_id",
+            "procedure_date",
+            "procedure_source_value",
+            "procedure_source_concept_id",
+        ),
+        "measurement": (
+            "measurement_id",
+            "measurement_concept_id",
+            "measurement_date",
+            "measurement_source_value",
+            "measurement_source_concept_id",
+        ),
+        "observation": (
+            "observation_id",
+            "observation_concept_id",
+            "observation_date",
+            "observation_source_value",
+            "observation_source_concept_id",
+        ),
+        "device_exposure": (
+            "device_exposure_id",
+            "device_concept_id",
+            "device_exposure_start_date",
+            "device_source_value",
+            "device_source_concept_id",
+        ),
     }
 
     for table, frames in tables.items():
         df = pd.concat(frames, ignore_index=True)
         df = df.sort_values(["person_id", "date"]).reset_index(drop=True)
         id_col, concept_col, date_col, src_col, src_concept_col = field_names[table]
-        out[table] = pd.DataFrame({
-            id_col: np.arange(1, len(df) + 1) + id_offset,
-            "person_id": df["person_id"],
-            concept_col: df["concept_id"],
-            date_col: df["date"],
-            "type_concept_id": df["type_concept_id"],
-            "visit_occurrence_id": df["visit_occurrence_id"],
-            src_col: df["source_value"],
-            src_concept_col: df["source_concept_id"],
-        })
+        out[table] = pd.DataFrame(
+            {
+                id_col: np.arange(1, len(df) + 1) + id_offset,
+                "person_id": df["person_id"],
+                concept_col: df["concept_id"],
+                date_col: df["date"],
+                "type_concept_id": df["type_concept_id"],
+                "visit_occurrence_id": df["visit_occurrence_id"],
+                src_col: df["source_value"],
+                src_concept_col: df["source_concept_id"],
+            }
+        )
     return out
 
 
 def write_omop_tables(tables: dict, outdir: str) -> list:
     """Write each table to CSV. Returns the list of paths written."""
     import os
+
     os.makedirs(outdir, exist_ok=True)
     paths = []
     for name, df in tables.items():

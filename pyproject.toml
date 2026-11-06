@@ -1,5 +1,5 @@
 [build-system]
-requires = ["setuptools>=68", "wheel"]
+requires = ["setuptools>=77", "wheel"]
 build-backend = "setuptools.build_meta"
 
 [project]
@@ -8,8 +8,32 @@ version = "0.1.0"
 description = "A fixed-density generative topology model of an OMOP CDM, with a likelihood"
 readme = "README.md"
 requires-python = ">=3.10"
-license = { text = "MIT" }
+license = "MIT"
+license-files = ["LICENSE"]
 authors = [{ name = "Jamie Gilbert" }]
+keywords = [
+    "omop",
+    "cdm",
+    "topology",
+    "generative-model",
+    "synthetic-data",
+    "observational-health",
+]
+classifiers = [
+    "Development Status :: 3 - Alpha",
+    "Intended Audience :: Healthcare Industry",
+    "Intended Audience :: Science/Research",
+    "Operating System :: OS Independent",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Programming Language :: Python :: 3.13",
+    "Programming Language :: Python :: 3.14",
+    "Topic :: Scientific/Engineering :: Medical Science Apps.",
+    "Topic :: Software Development :: Libraries :: Python Modules",
+    "Typing :: Typed",
+]
 dependencies = [
     "numpy>=1.24",
     "scipy>=1.10",
@@ -17,7 +41,15 @@ dependencies = [
 ]
 
 [project.optional-dependencies]
-dev = ["pytest>=7", "matplotlib>=3.7", "ruff>=0.4"]
+dev = [
+    "pytest>=7",
+    "pytest-cov>=4",
+    "mypy>=1.0",
+    "pandas-stubs>=2.0",
+    "pre-commit>=4.0",
+    "matplotlib>=3.7",
+    "ruff>=0.4",
+]
 test = [
     "psycopg[binary]>=3.1",
     "PyYAML>=6.0",
@@ -28,19 +60,126 @@ databricks = [
     "databricks-sql-connector[pyarrow]>=3.0",
 ]
 
-[tool.setuptools]
-packages = ["topocdm"]
+[project.urls]
+Homepage = "https://github.com/OHDSI/topocdm"
+Repository = "https://github.com/OHDSI/topocdm.git"
+Issues = "https://github.com/OHDSI/topocdm/issues"
+Changelog = "https://github.com/OHDSI/topocdm/blob/main/CHANGELOG.md"
+
+[tool.setuptools.packages.find]
+where = ["."]
+include = ["topocdm*"]
+exclude = ["tests*", "experiments*", "explore*", "topocdm.egg-info*"]
+
+[tool.setuptools.package-data]
+topocdm = ["py.typed"]
 
 [tool.ruff]
 line-length = 100
-exclude = [".venv", "data", "results", "figs", ".mplconfig"]
+extend-exclude = [
+    ".venv",
+    "data",
+    "results",
+    "figs",
+    ".mplconfig",
+    "build",
+    "dist",
+    "src",
+]
 
 [tool.ruff.lint]
-select = ["E9", "F63", "F7", "F82"]
+select = [
+    "E",   # pycodestyle errors
+    "F",   # Pyflakes
+    "I",   # isort
+    "UP",  # pyupgrade
+    "B",   # flake8-bugbear
+    "C4",  # flake8-comprehensions
+    "SIM", # flake8-simplify
+]
+ignore = [
+    "E501",  # line too long (handled by the formatter)
+    "SIM115",  # open() without context manager (data-loading paths use try/finally)
+    "B905",  # zip() without strict= (postponed; review per call site)
+]
+
+[tool.ruff.lint.isort]
+known-first-party = ["topocdm"]
+
+[tool.ruff.format]
+quote-style = "double"
+indent-style = "space"
+skip-magic-trailing-comma = false
+line-ending = "auto"
+
+[tool.mypy]
+python_version = "3.10"
+# Numerical code leans on NumPy/SciPy, whose stubs return `Any` from most
+# array operations. The checks below are the ones that still catch real bugs
+# in that setting; `warn_return_any` is left off until the array helpers are
+# typed more precisely.
+warn_return_any = false
+warn_unused_configs = true
+disallow_untyped_defs = false
+disallow_incomplete_defs = false
+check_untyped_defs = true
+no_implicit_optional = true
+warn_redundant_casts = true
+warn_unused_ignores = true
+warn_no_return = true
+strict_equality = true
+exclude = [
+    "^src/",
+    "^experiments/",
+    "^explore/",
+    "^scripts/",
+    "^build/",
+]
+
+[[tool.mypy.overrides]]
+module = ["scipy.*", "duckdb.*", "psycopg.*", "databricks.*", "matplotlib.*"]
+ignore_missing_imports = true
+
+[[tool.mypy.overrides]]
+module = ["circe.*"]
+ignore_missing_imports = true
+
+[tool.coverage.run]
+source = ["topocdm"]
+omit = [
+    "*/tests/*",
+    "*/test_*.py",
+    "*/__pycache__/*",
+    "*/site-packages/*",
+    "*/build/*",
+    "*/dist/*",
+]
+
+[tool.coverage.report]
+# Ratchet this up as coverage grows; run a single test file with `--no-cov`.
+fail_under = 65
+exclude_lines = [
+    "pragma: no cover",
+    "def __repr__",
+    "raise AssertionError",
+    "raise NotImplementedError",
+    "if __name__ == .__main__.:",
+    "if TYPE_CHECKING:",
+    "@abstractmethod",
+]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
+addopts = [
+    "--strict-markers",
+    "--strict-config",
+    "--cov=topocdm",
+    "--cov-report=term-missing",
+    "--cov-report=xml",
+]
 markers = [
+    "unit: fast, dependency-free unit test",
     "integration: needs a live OMOP CDM; set CDM_DSN",
     "databricks: needs a live Databricks warehouse and connection card",
+    "slow: marks tests as slow; deselect with '-m \"not slow\"'",
 ]

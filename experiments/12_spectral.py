@@ -11,17 +11,31 @@ Two uses of spectra here:
 
 The second is the more informative one, and it does not flatter the model.
 """
+
 from __future__ import annotations
-import os, sys
+
+import os
+import sys
+
 import numpy as np
+
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-import matplotlib; matplotlib.use("Agg")
+import matplotlib
+
+matplotlib.use("Agg")
 import matplotlib.pyplot as plt
 
 FIG, RES = "figs", "results"
-plt.rcParams.update({"figure.dpi": 160, "font.size": 9,
-                     "axes.spines.top": False, "axes.spines.right": False,
-                     "axes.grid": True, "grid.alpha": 0.25})
+plt.rcParams.update(
+    {
+        "figure.dpi": 160,
+        "font.size": 9,
+        "axes.spines.top": False,
+        "axes.spines.right": False,
+        "axes.grid": True,
+        "grid.alpha": 0.25,
+    }
+)
 
 z = np.load(f"{RES}/cdm_spectrum.npz")
 s_real, s_syn = z["real"], z["syn"]
@@ -39,8 +53,12 @@ ax.legend(fontsize=7.5, frameon=False)
 
 ax = axes[1]
 grid = np.linspace(0, max(s_real.max(), s_syn.max()), 300)
+
+
 def ccdf(s):
     return np.searchsorted(np.sort(s), grid, side="right") / len(s)
+
+
 ax.plot(grid, ccdf(s_real), color="#1f4e79", lw=1.6, label="real")
 ax.plot(grid, ccdf(s_syn), color="#c1440e", lw=1.6, label="synthetic")
 ks = float(np.abs(ccdf(s_real) - ccdf(s_syn)).max())

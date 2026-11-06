@@ -27,14 +27,14 @@ def test_live_databricks_small_fit(tmp_path):
     pytest.importorskip("databricks.sql")
 
     spec = importlib.util.spec_from_file_location(
-        "fit_databricks", ROOT / "scripts" / "fit_databricks.py")
+        "fit_databricks", ROOT / "scripts" / "fit_databricks.py"
+    )
     mod = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(mod)
 
     out = tmp_path / "fit.pkl"
     summary = tmp_path / "fit.json"
-    rc = mod.main(["--n-patients", "100", "--k", "2",
-                   "--out", str(out), "--summary", str(summary)])
+    rc = mod.main(["--n-patients", "100", "--k", "2", "--out", str(out), "--summary", str(summary)])
     assert rc == 0
     data = json.loads(summary.read_text())
     assert data["patients"] > 0

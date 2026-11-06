@@ -21,10 +21,13 @@ from scipy import sparse
 from topocdm.scalable import SparseCDM
 
 
-def load_incidence(events="data/events.csv", concepts="data/concepts.csv",
-                   periods="data/periods.csv",
-                   group_by=("domain_id", "concept_class_id"),
-                   min_events=1) -> SparseCDM:
+def load_incidence(
+    events="data/events.csv",
+    concepts="data/concepts.csv",
+    periods="data/periods.csv",
+    group_by=("domain_id", "concept_class_id"),
+    min_events=1,
+) -> tuple[SparseCDM, list, pd.DataFrame]:
     ev = pd.read_csv(events)
     pe = pd.read_csv(periods, parse_dates=["start_date", "end_date"])
     cv = pd.read_csv(concepts, usecols=["concept_id", *group_by])
@@ -50,12 +53,22 @@ def load_incidence(events="data/events.csv", concepts="data/concepts.csv",
         used = used[keep]
         cv = cv.loc[used]
 
-    days = (pe.set_index("person_id").loc[persons, "end_date"]
-            - pe.set_index("person_id").loc[persons, "start_date"]).dt.days
+    days = (
+        pe.set_index("person_id").loc[persons, "end_date"]
+        - pe.set_index("person_id").loc[persons, "start_date"]
+    ).dt.days
     T = np.maximum(days.to_numpy(dtype=float) / 365.25, 1.0 / 365.25)
 
     labels = cv[list(group_by)].astype(str).agg(" | ".join, axis=1)
     codes, uniques = pd.factorize(labels)
-    return SparseCDM(X=X, T=T, concept_group=codes.astype(np.int64),
-                     concept_ids=used.astype(np.int64),
-                     person_ids=persons.astype(np.int64)), list(uniques), cv
+    return (
+        SparseCDM(
+            X=X,
+            T=T,
+            concept_group=codes.astype(np.int64),
+            concept_ids=used.astype(np.int64),
+            person_ids=persons.astype(np.int64),
+        ),
+        list(uniques),
+        cv,
+    )

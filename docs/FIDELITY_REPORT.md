@@ -201,8 +201,9 @@ MPLCONFIGDIR=./.mplconfig .venv/bin/python experiments/25_fixes_fidelity.py
 
 ```python
 import json
+
 r = json.load(open("results/fixes_fidelity.json"))
-r["synthea"]["bins"]        # rare_1_3, mid_3_30, common_30_100
+r["synthea"]["bins"]  # rare_1_3, mid_3_30, common_30_100
 r["synthea"]["incidence_ratio_median"]
 r["mimic"]["bins"]
 ```

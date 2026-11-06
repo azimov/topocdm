@@ -22,8 +22,8 @@ def test_run_fit_live_cdm(cdm_dsn, cdm_schema, cdm_results_schema):
     backend = db.PostgresBackend(cdm_dsn)
     try:
         fit, summary = db.run_fit(
-            backend, cdm_schema, cdm_results_schema,
-            n_patients=SAMPLE, seed=0, k=0)
+            backend, cdm_schema, cdm_results_schema, n_patients=SAMPLE, seed=0, k=0
+        )
     finally:
         backend.close()
 
@@ -41,8 +41,8 @@ def test_extract_sample_live_cdm(cdm_dsn, cdm_schema, cdm_results_schema):
     backend = db.PostgresBackend(cdm_dsn)
     try:
         events, periods, table = db.extract_sample(
-            backend, cdm_schema, cdm_results_schema,
-            n_patients=SAMPLE, seed=0)
+            backend, cdm_schema, cdm_results_schema, n_patients=SAMPLE, seed=0
+        )
     finally:
         backend.close()
 
