@@ -26,6 +26,11 @@ def cdm_schema():
 
 
 @pytest.fixture(scope="session")
+def cdm_results_schema():
+    return os.environ.get("CDM_RESULTS_SCHEMA", "public")
+
+
+@pytest.fixture(scope="session")
 def cdm_conn(cdm_dsn):
     psycopg = pytest.importorskip("psycopg")
     conn = psycopg.connect(cdm_dsn)

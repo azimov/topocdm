@@ -4,6 +4,31 @@
 a scratch schema on the cluster, pulls only that sample, fits
 `topocdm.perdomain.fit_perdomain`, and writes a pickled fit plus a JSON summary.
 
+## Backends
+
+`topocdm.db.run_fit` is backend-agnostic. The patient-sample SQL is the only
+dialect-specific piece:
+
+| backend | sample order |
+|---|---|
+| Postgres | `md5(person_id::text || ':seed')` |
+| DuckDB | `hash(person_id::varchar || ':seed')` |
+| Databricks | `hash(person_id, seed)` |
+
+The same pipeline runs on Postgres and DuckDB in the integration tests; the
+Databricks backend adds the SQLRender translation (`db.to_spark`).
+
+```bash
+# local, no warehouse
+python scripts/fit_databricks.py --backend postgres --dsn ... \
+  --cdm demo_cdm --results-schema public --n-patients 100
+python scripts/fit_databricks.py --backend duckdb --duckdb /tmp/cdm.duckdb \
+  --cdm main --results-schema main --n-patients 100
+
+# warehouse
+python scripts/fit_databricks.py --backend databricks --n-patients 100
+```
+
 ## What it deliberately is not
 
 The circepy execution layer is ibis-centric (`circe/execution/`, including the

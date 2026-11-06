@@ -113,8 +113,9 @@ domain branch. It does not read or write anything.
 
 ## Tests
 
-Unit tests need nothing. The live Postgres and Databricks tests, the local
-`demo_cdm` command, and the CI fixture are in [docs/TESTING.md](TESTING.md).
+Unit and DuckDB tests need nothing (DuckDB is in-process). The Postgres tests
+use `CDM_DSN`; without it they skip. The live Databricks test is opt-in. The
+local `demo_cdm` command and the CI fixture are in [docs/TESTING.md](TESTING.md).
 
 ## First fit
 

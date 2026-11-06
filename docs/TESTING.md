@@ -1,76 +1,103 @@
 # Testing
 
-The previous tests never executed SQL against a database. The Databricks path
-was checked with a SQL shim and a dry run, which is why the multiple-period bug
-and the `MATERIALIZED` error reached you. The tests now have a live database
-tier.
+The old suite never executed SQL against a database. The Databricks path was
+checked with a SQL shim and a dry run, which is why the multiple-period bug and
+the `MATERIALIZED` error reached production use. The tests now run the same
+`topocdm.db.run_fit` pipeline against Postgres and DuckDB before Databricks.
 
 ## Tiers
 
 | tier | command | needs |
 |---|---|---|
-| unit | `pytest -q` | nothing; integration and Databricks tests skip |
-| integration (Postgres) | `pytest -q -m integration` | `CDM_DSN`, `CDM_SCHEMA` |
+| unit + DuckDB | `pytest -q` | nothing; DuckDB is in-process |
+| Postgres integration | `pytest -q -m integration` | `CDM_DSN`, `CDM_SCHEMA`, `CDM_RESULTS_SCHEMA` |
 | Databricks live | `pytest -q -m databricks` | connection card, circepy, connector |
 | CI | push / PR | Postgres 16 service, fixture CDM |
 
 ## What each test does
 
-- `tests/integration/test_cdm_fit.py` executes the **real extract SQL** against a
-  live OMOP Postgres database, then runs `fit_perdomain` and
-  `clinical_incidence`. `demo_cdm` has 2,694 patients and 5,343 observation
-  periods, so it exercises the multiple-period case from issue #1.
+- `tests/integration/test_duckdb_fit.py` builds a five-patient DuckDB CDM in
+  memory, including a patient with **two observation periods**, and runs
+  `run_fit`: sample table, extraction, fit, drop. No server.
+- `tests/integration/test_cdm_fit.py` runs the same `run_fit` against a live
+  OMOP Postgres database. `demo_cdm` has 2,694 patients and 5,343 periods, so
+  it exercises the multiple-period case from issue #1.
 - `tests/integration/test_databricks_live.py` runs
   `scripts/fit_databricks.py --n-patients 100 --k 2` against the configured
-  warehouse. It is skipped unless the connection card, circepy and the
-  Databricks connector are present. **This is the only test that proves the
-  Databricks path**; run it before trusting a warehouse fit.
-- `tests/test_databricks_config.py` checks the `cdms`/`cmds` loader and the SQL
-  contract: the sample is a scratch table, the extract joins it, and there is
-  no `WITH ... AS MATERIALIZED` / `WITH keep`.
+  warehouse. It is skipped unless the card, circepy and the connector exist.
+  **This is the only test that proves the warehouse path.**
+- `tests/test_databricks_config.py` checks the `cdms`/`cmds` loader, the
+  scratch-table SQL, the absence of `WITH ... AS MATERIALIZED`, and the
+  Postgres/DuckDB/Databricks sample syntax.
 - `tests/test_perdomain.py::test_multiple_observation_periods_per_person` is the
   unit regression for the period aggregation.
 
+## The pipeline is shared
+
+`topocdm.db.run_fit` is the only implementation. The backend is the only
+dialect-specific part:
+
+| backend | patient sample order |
+|---|---|
+| Postgres | `md5(person_id::text || ':seed')` |
+| DuckDB | `hash(person_id::varchar || ':seed')` |
+| Databricks | `hash(person_id, seed)` |
+
+Databricks additionally translates the extraction with SQLRender
+(`db.to_spark`). Postgres and DuckDB run the same templates unchanged.
+
 ## Local runs
 
-Against the OHDSI lab `demo_cdm` (the multi-period schema):
+No database server, only DuckDB:
+
+```bash
+MPLCONFIGDIR=./.mplconfig .venv/bin/python -m pytest -q tests/integration/test_duckdb_fit.py
+# 1 passed
+```
+
+The OHDSI lab `demo_cdm`:
 
 ```bash
 CDM_DSN=postgresql://postgres:mypass@localhost:5432/postgres \
-CDM_SCHEMA=demo_cdm \
+CDM_SCHEMA=demo_cdm CDM_RESULTS_SCHEMA=public \
 MPLCONFIGDIR=./.mplconfig .venv/bin/python -m pytest -q -m integration
-# 2 passed
+# 3 passed (two Postgres, one DuckDB)
 ```
 
-Against the CI fixture in a throwaway database:
+The CI fixture in a throwaway database:
 
 ```bash
 docker exec ohdsi-lab-postgres createdb -U postgres omop_test
 docker exec -i ohdsi-lab-postgres psql -U postgres -d omop_test \
   -v ON_ERROR_STOP=1 -f - < tests/fixtures/omop_test.sql
 CDM_DSN=postgresql://postgres:mypass@localhost:5432/omop_test \
-CDM_SCHEMA=cdm \
+CDM_SCHEMA=cdm CDM_RESULTS_SCHEMA=public \
 MPLCONFIGDIR=./.mplconfig .venv/bin/python -m pytest -q
-# 35 passed, 1 skipped (the skipped one is the live Databricks test)
+# 37 passed, 1 skipped (the skipped one is the live Databricks test)
 ```
 
-Against the real warehouse:
+Without `CDM_DSN`:
+
+```bash
+MPLCONFIGDIR=./.mplconfig .venv/bin/python -m pytest -q
+# 35 passed, 3 skipped (two Postgres, one Databricks)
+```
+
+The real warehouse:
 
 ```bash
 MPLCONFIGDIR=./.mplconfig .venv/bin/python -m pytest -q -m databricks
 ```
 
 It reads `~/.config/ohdsi/databricks_connection.yml`, extracts 100 patients,
-fits `K=2`, and asserts the summary is non-empty. It skips if the card or
-`circe` is missing.
+fits `K=2`, and asserts the summary is non-empty.
 
 ## CI
 
 `.github/workflows/tests.yml` starts a Postgres 16 service, loads
 `tests/fixtures/omop_test.sql`, and runs `pytest -q` on Python 3.10, 3.11 and
 3.12. The fixture has five patients and patient 1 has two observation periods.
-`ruff check .` runs before the tests (syntax and undefined names only; the
-full style rules are not enabled yet).
+`ruff check .` runs before the tests (syntax and undefined names only).
 
 ## What is still not tested
 

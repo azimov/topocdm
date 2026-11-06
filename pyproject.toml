@@ -21,6 +21,7 @@ dev = ["pytest>=7", "matplotlib>=3.7", "ruff>=0.4"]
 test = [
     "psycopg[binary]>=3.1",
     "PyYAML>=6.0",
+    "duckdb>=0.9",
 ]
 databricks = [
     "PyYAML>=6.0",

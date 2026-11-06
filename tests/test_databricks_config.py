@@ -1,10 +1,12 @@
-"""The connection card uses the 'cdms' key; 'cmds' is a legacy fallback."""
+"""The connection card and the portable sample/extract SQL."""
 
 from __future__ import annotations
 
 import importlib.util
 import pathlib
 import textwrap
+
+from topocdm import db
 
 ROOT = pathlib.Path(__file__).resolve().parents[1]
 SPEC = importlib.util.spec_from_file_location(
@@ -49,15 +51,15 @@ def test_legacy_cmds_key_still_loads(tmp_path):
 
 
 def test_sampled_sql_uses_a_scratch_table_not_a_cte():
-    table = fit_databricks.sample_table_name("scratch.me", 1000, 0)
+    table = db.sample_table_name("scratch.me", 1000, 0)
     assert table == "scratch.me.topocdm_sample_0_1000"
 
-    sample = fit_databricks.create_sample_sql("main.omop", table, 1000, 0)
+    sample = db.create_sample_sql("spark", table, "main.omop", 1000, 0)
     assert "create or replace table scratch.me.topocdm_sample_0_1000" in sample
     assert "order by hash(person_id, 0)" in sample
     assert "limit 1000" in sample
 
-    events, periods = fit_databricks.build_extract_sql(
+    events, periods = db.build_extract_sql(
         "main.omop", f" join {table} using (person_id)")
     join = "join scratch.me.topocdm_sample_0_1000 using (person_id)"
     assert join in events
@@ -68,6 +70,21 @@ def test_sampled_sql_uses_a_scratch_table_not_a_cte():
 
 
 def test_full_extract_has_no_scratch_join():
-    events, periods = fit_databricks.build_extract_sql("main.omop")
+    events, periods = db.build_extract_sql("main.omop")
     assert "join scratch" not in events
     assert "join scratch" not in periods
+
+
+def test_each_dialect_gets_a_deterministic_sample():
+    pg = db.sample_select_sql("postgres", "main.omop", 100, 7)
+    duck = db.sample_select_sql("duckdb", "main.omop", 100, 7)
+    spark = db.sample_select_sql("spark", "main.omop", 100, 7)
+
+    assert "md5(" in pg and "limit 100" in pg
+    assert "hash(" in duck and "limit 100" in duck
+    assert "hash(person_id, 7)" in spark and "limit 100" in spark
+
+    assert db.create_sample_sql("spark", "s.t", "main.omop", 10, 0).startswith(
+        "create or replace table")
+    assert db.create_sample_sql("postgres", "s.t", "main.omop", 10, 0).startswith(
+        "create table")
