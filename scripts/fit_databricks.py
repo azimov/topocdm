@@ -13,7 +13,7 @@ Connection and schemas come from the OHDSI connection card:
         http_path: "/sql/1.0/warehouses/...."
         personal_access_token: "dapi...."
 
-    cmds:
+    cdms:
       mycdm_version:
         cdm_schema: "catalog.schema"
         vocabulary_schema: "catalog.schema"
@@ -135,15 +135,16 @@ def load_config(path: str = DEFAULT_CONFIG, cmd: str | None = None):
         cfg = yaml.safe_load(fh) or {}
 
     conn = (cfg.get("databricks") or {}).get("connection") or {}
-    cmds = cfg.get("cmds") or {}
-    if not cmds:
-        raise SystemExit(f"no 'cmds' entries in {path}")
+    # canonical key is "cdms"; accept the older "cmds" spelling too
+    cdms = cfg.get("cdms") or cfg.get("cmds") or {}
+    if not cdms:
+        raise SystemExit(f"no 'cdms' entries in {path}")
 
-    name = cmd or next(iter(cmds))
-    if name not in cmds:
+    name = cmd or next(iter(cdms))
+    if name not in cdms:
         raise SystemExit(
-            f"cmd '{name}' not in {path}; available: {', '.join(cmds)}")
-    prof = cmds[name] or {}
+            f"cmd '{name}' not in {path}; available: {', '.join(cdms)}")
+    prof = cdms[name] or {}
     cdm = prof.get("cdm_schema")
     scratch = prof.get("results_schema")
     vocab = prof.get("vocabulary_schema") or cdm
@@ -259,7 +260,7 @@ def main(argv=None):
     ap.add_argument("--config", default=DEFAULT_CONFIG,
                     help="connection card path")
     ap.add_argument("--cmd", default=None,
-                    help="which cmds entry to use (default: the first)")
+                    help="which cdms entry to use (default: the first)")
     ap.add_argument("--n-patients", type=int, default=None,
                     help="patient sample; written to results_schema")
     ap.add_argument("--seed", type=int, default=0,

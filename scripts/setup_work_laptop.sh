@@ -113,7 +113,7 @@ CFG="${DATABRICKS_CONFIG:-$HOME/.config/ohdsi/databricks_connection.yml}"
 if [ -f "$CFG" ]; then
   echo "  found $CFG"
 else
-  echo "  not found: create $CFG with databricks.connection and a cmds.<name>"
+  echo "  not found: create $CFG with databricks.connection and a cdms.<name>"
   echo "  entry (cdm_schema, vocabulary_schema, writable results_schema)"
 fi
 
@@ -123,7 +123,7 @@ Setup complete.
 
 Next:
   1. create ~/.config/ohdsi/databricks_connection.yml with
-     databricks.connection and a cmds.<name> entry:
+     databricks.connection and a cdms.<name> entry:
        cdm_schema, vocabulary_schema, results_schema (writable scratch)
   2. first fit, 10k patients, selected on the cluster:
        MPLCONFIGDIR=./.mplconfig .venv/bin/python scripts/fit_databricks.py \\

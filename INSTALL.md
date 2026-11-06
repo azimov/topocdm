@@ -42,7 +42,7 @@ databricks:
     server_hostname: "adb-....azuredatabricks.net"
     http_path: "/sql/1.0/warehouses/...."
     personal_access_token: "dapi...."
-cmds:
+cdms:
   mycdm_version:
     cdm_schema: "catalog.schema"
     vocabulary_schema: "catalog.schema"
